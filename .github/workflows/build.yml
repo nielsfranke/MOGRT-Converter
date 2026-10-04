@@ -1,0 +1,54 @@
+# Builds the desktop app for macOS, Windows and Linux (run manually: Actions → build → Run workflow).
+name: build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: python:3.12-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh packaging/linux/build-in-docker.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.tar.gz
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[build]"
+          python packaging/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*.dmg
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Inno Setup and Ghostscript
+        run: choco install innosetup ghostscript -y --no-progress
+        continue-on-error: true
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[build]"
+          python packaging/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/*.zip
+            dist/*-Setup.exe

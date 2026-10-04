@@ -1,0 +1,1209 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOGRT Converter</title>
+<style>
+:root {
+  --bg: #1b1c1f;
+  --panel: #232529;
+  --panel-2: #2a2d32;
+  --line: #34373d;
+  --text: #e7e5e0;
+  --muted: #8e9199;
+  --accent: #e8b13a;     /* tally / render */
+  --accent-ink: #1b1c1f;
+  --ok: #6fbf8e;
+  --warn: #e0806a;
+  --radius-s: 4px;
+  --radius-m: 7px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+body { display: grid; grid-template-rows: 1fr auto; overflow: hidden; }
+button, input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.app { display: grid; grid-template-columns: 250px 1fr 330px; min-height: 0; }
+.pane { background: var(--panel); min-height: 0; display: flex; flex-direction: column; }
+.pane.left { border-right: 1px solid var(--line); }
+.pane.right { border-left: 1px solid var(--line); }
+.pane-head { padding: 12px 14px 10px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+.pane-head h2 { margin: 0; font-size: 13px; font-weight: 600; flex: 1; }
+.icon-btn { background: none; border: 1px solid var(--line); border-radius: var(--radius-s); color: var(--muted); padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+.icon-btn:hover { color: var(--text); border-color: #4a4e56; }
+
+/* library */
+.search { margin: 10px 12px 6px; padding: 7px 9px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); width: calc(100% - 24px); }
+.lib { overflow: auto; padding: 4px 8px 12px; flex: 1; }
+.lib-tools { display: flex; gap: 6px; align-items: center; margin: 0 12px 4px; }
+.lib-tools select { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 4px 6px; color: var(--muted); font-size: 11.5px; }
+.sec-head { display: flex; align-items: center; gap: 4px; padding: 10px 2px 3px 4px; border-radius: var(--radius-s); border: 1px dashed transparent; }
+.sec-head .tog { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted); font-size: 11px; text-align: left; }
+.sec-head .tog::before { content: ""; flex: none; width: 5px; height: 5px; margin: 0 3px 3px 1px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); transition: transform .12s; }
+.sec.collapsed .sec-head .tog::before { transform: rotate(-45deg); margin-bottom: 0; }
+.sec.collapsed .sec-body { display: none; }
+.sec-head .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sec-head .cnt { color: #6b6e75; font-variant-numeric: tabular-nums; }
+.sec.col .sec-head .tog { color: var(--text); font-weight: 600; }
+.sec-head.drop, .tpl-wrap.drop { border-color: var(--accent); background: rgba(232,177,58,.08); }
+.sec-body .lib-empty { padding: 4px 6px 6px 18px; font-size: 11.5px; }
+.more { visibility: hidden; flex: none; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: var(--radius-s); font-size: 14px; line-height: 1; }
+.more:hover { color: var(--text); background: var(--line); }
+.sec-head:hover .more, .tpl-wrap:hover .more, .more:focus-visible, .more[aria-expanded="true"] { visibility: visible; }
+.tpl-wrap { position: relative; display: flex; align-items: center; border-radius: var(--radius-s); border: 1px dashed transparent; }
+.tpl-wrap .more { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: var(--panel-2); }
+.rename { width: 100%; background: var(--bg); border: 1px solid var(--accent); border-radius: 3px; padding: 2px 5px; font-size: 12px; }
+.lib-foot { padding: 10px 6px 0; }
+.menu { position: fixed; z-index: 30; min-width: 200px; max-width: 280px; background: var(--panel-2); border: 1px solid #44474e; border-radius: var(--radius-m); padding: 4px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 6px 10px; border-radius: var(--radius-s); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu button:hover, .menu button:focus-visible { background: var(--line); outline: none; }
+.menu button.danger { color: var(--warn); }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.menu .sub { color: var(--muted); font-size: 11px; padding: 6px 10px 2px; }
+.lib-empty { color: var(--muted); font-size: 12px; line-height: 1.5; padding: 10px 6px; }
+.tpl { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 9px; align-items: center; padding: 6px; border-radius: var(--radius-s); cursor: pointer; border: 1px solid transparent; width: 100%; text-align: left; background: none; }
+.tpl:hover { background: var(--panel-2); }
+.tpl[aria-current="true"] { background: var(--panel-2); border-color: var(--accent); }
+.tpl img { width: 64px; height: 36px; object-fit: contain; background: #0f1012; border-radius: 3px; }
+.tpl .n { font-size: 12px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lang { margin: -4px 12px 10px; font-size: 11px; text-align: right; }
+.drop-hint { margin: 8px 12px 12px; padding: 10px; border: 1px dashed var(--line); border-radius: var(--radius-s); color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+body.dragging .drop-hint { border-color: var(--accent); color: var(--text); }
+
+/* stage */
+.stage { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: var(--bg); }
+.stage-head { display: flex; align-items: baseline; gap: 12px; padding: 12px 18px 0; }
+.stage-head h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .1px; }
+.stage-head .meta { color: var(--muted); font-size: 12px; }
+.viewer { position: relative; min-height: 0; display: grid; place-items: center; padding: 16px 18px; }
+.frame { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: 16/9; box-shadow: 0 0 0 1px var(--line); }
+.frame.checker { background-color: #2e3035; background-image:
+  linear-gradient(45deg, #26282c 25%, transparent 25%), linear-gradient(-45deg, #26282c 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, #26282c 75%), linear-gradient(-45deg, transparent 75%, #26282c 75%);
+  background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
+.frame.black { background: #000; } .frame.white { background: #fff; } .frame.grey { background: #6e6e6e; }
+.frame img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.safe { position: absolute; inset: 5%; border: 1px solid rgba(232,177,58,.35); pointer-events: none; display: none; }
+.safe::after { content: ""; position: absolute; inset: 5.55%; border: 1px dashed rgba(232,177,58,.25); }
+.frame.show-safe .safe { display: block; }
+.empty { color: var(--muted); text-align: center; line-height: 1.6; max-width: 360px; }
+.empty b { color: var(--text); font-weight: 600; }
+
+.transport { display: grid; grid-template-columns: auto auto 1fr auto; gap: 14px; align-items: center; padding: 10px 18px 16px; }
+.play { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); cursor: pointer; display: grid; place-items: center; }
+.play svg { width: 13px; height: 13px; fill: var(--text); }
+.tc { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 300; letter-spacing: .5px; min-width: 150px; }
+.tc small { font-size: 12px; color: var(--muted); margin-left: 6px; font-weight: 400; }
+.scrub-wrap { position: relative; min-width: 120px; }
+input[type=range].scrub { width: 100%; accent-color: var(--accent); display: block; }
+.buffer { position: absolute; left: 0; right: 0; bottom: -5px; height: 3px; pointer-events: none; }
+.buffer canvas { width: 100%; height: 100%; display: block; }
+.view-opts { display: flex; gap: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-s); overflow: hidden; }
+.seg button { background: none; border: 0; padding: 4px 8px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--text); }
+
+/* controls */
+.controls { overflow: auto; padding: 6px 14px 14px; flex: 1; }
+.field { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.field:last-child { border-bottom: 0; }
+.field label { display: block; color: var(--muted); font-size: 11.5px; margin-bottom: 6px; }
+.field textarea, .field input[type=text], .field input[type=number] {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 7px 8px; }
+.field textarea { resize: vertical; min-height: 34px; line-height: 1.35; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row input[type=range] { flex: 1; accent-color: var(--accent); }
+.row input[type=number] { width: 78px; flex: none; }
+.xy { display: grid; grid-template-columns: auto minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: center; }
+.xy span, .motion-row .axis { color: var(--muted); font-size: 11px; }
+.check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.group-note { padding: 12px 0 4px; }
+.group-note h3 { margin: 0 0 3px; font-size: 12px; font-weight: 600; }
+.group-note p { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.color-row input[type=color] { width: 38px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-s); background: none; }
+.reset { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 11px; padding: 0; }
+.reset:hover { color: var(--text); }
+.fontwarn { margin: 10px 14px 0; padding: 9px 10px; border-radius: var(--radius-s); background: rgba(224,128,106,.12); border: 1px solid rgba(224,128,106,.35); font-size: 11.5px; line-height: 1.45; }
+.fontwarn button { margin-top: 6px; }
+
+.render-box { border-top: 1px solid var(--line); padding: 12px 14px 14px; display: grid; gap: 8px; background: var(--panel); }
+.render-box .row label { color: var(--muted); font-size: 11.5px; min-width: 64px; }
+.render-box select, .render-box input[type=text] { flex: 1 1 0; width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 8px; min-width: 0; }
+.render-box .row .icon-btn { flex: none; }
+.render-btn { margin-top: 4px; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--radius-m); padding: 10px; font-weight: 650; cursor: pointer; font-size: 13.5px; }
+.render-btn:disabled { opacity: .45; cursor: default; }
+.extras { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--muted); }
+.link { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link:hover { color: var(--text); }
+.render-btn:not(:disabled):hover { filter: brightness(1.06); }
+
+/* queue */
+.queue { border-top: 1px solid var(--line); background: var(--panel); max-height: 180px; overflow: auto; }
+.queue:empty { display: none; }
+.job { display: grid; grid-template-columns: 1fr 220px auto; gap: 14px; align-items: center; padding: 8px 18px; border-bottom: 1px solid var(--line); }
+.job .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job .t small { color: var(--muted); margin-left: 8px; }
+.bar { height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+.job.done .bar > i { background: var(--ok); }
+.job.error .bar > i { background: var(--warn); }
+.job .act button { background: none; border: 1px solid var(--line); border-radius: var(--radius-s); padding: 3px 9px; cursor: pointer; color: var(--text); }
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--line); padding: 9px 14px; border-radius: var(--radius-m); display: none; }
+
+@media (max-width: 980px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow: auto; }
+  body { overflow: auto; }
+  .pane.left { max-height: 220px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+.motion-head { display: flex; align-items: baseline; gap: 8px; padding: 16px 0 2px; border-top: 1px solid var(--line); margin-top: 6px; }
+.motion-head h3 { margin: 0; font-size: 12px; font-weight: 600; flex: 1; }
+.motion-grid { display: grid; grid-template-columns: auto minmax(0,1fr) auto minmax(0,1fr); gap: 6px 8px; align-items: center; padding: 8px 0 4px; }
+.motion-grid label { color: var(--muted); font-size: 11.5px; margin: 0; }
+.motion-grid input[type=number] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 7px; }
+.motion-row { display: grid; grid-template-columns: 74px 1fr 70px; gap: 8px; align-items: center; padding: 4px 0; }
+.motion-row label { color: var(--muted); font-size: 11.5px; }
+.motion-row input[type=range] { accent-color: var(--accent); width: 100%; }
+.motion-row input[type=number] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 7px; }
+.frame.movable { cursor: move; }
+.frame.dragging { cursor: grabbing; }
+.hint { color: var(--muted); font-size: 11.5px; line-height: 1.4; margin: -2px 0 2px 72px; }
+.btn-row { display: flex; gap: 8px; margin-top: 4px; }
+.btn-row .render-btn { flex: 1; margin-top: 0; }
+.secondary-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 10px 12px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+.secondary-btn:hover { border-color: #4a4e56; }
+/* batch dialog */
+.modal { position: fixed; inset: 0; background: rgba(10, 11, 13, .55); display: grid; place-items: center; z-index: 20; }
+.modal[hidden] { display: none; }
+.sheet { width: min(1200px, calc(100vw - 48px)); max-height: calc(100vh - 48px); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: grid; grid-template-rows: auto 1fr auto; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.sheet-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.sheet-head h2 { margin: 0 auto 0 0; font-size: 14px; font-weight: 600; }
+.sheet-head p { flex-basis: 100%; margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.sheet-body { overflow: auto; padding: 0 0 8px; }
+.sheet-foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.sheet-foot .info { color: var(--muted); font-size: 12px; margin-right: auto; }
+table.batch { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+table.batch th { position: sticky; top: 0; background: var(--panel); text-align: left; font-weight: 500; color: var(--muted); font-size: 11.5px; padding: 10px 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; z-index: 1; }
+table.batch td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.batch tr.active td { background: rgba(232,177,58,.07); }
+table.batch td.num { color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 12px; }
+table.batch textarea, table.batch input[type=text], table.batch input[type=number] { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 7px; width: 100%; }
+table.batch textarea { min-width: 200px; resize: vertical; line-height: 1.35; }
+table.batch .w-num { width: 90px; } table.batch .w-dur { width: 92px; } table.batch .w-file { min-width: 180px; } table.batch .w-pt { width: 120px; }
+table.batch input[type=color] { width: 38px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-s); background: none; }
+table.batch .acts { white-space: nowrap; padding-top: 9px; }
+table.batch .acts button { background: none; border: 1px solid var(--line); border-radius: var(--radius-s); color: var(--muted); padding: 2px 7px; cursor: pointer; margin-right: 3px; }
+table.batch .acts button:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="pane left" aria-label="Vorlagen">
+    <div class="pane-head"><h2>Vorlagen</h2><button class="icon-btn" id="addFiles" title="Einzelne .mogrt-Dateien hinzufügen" hidden>+ Datei</button><button class="icon-btn" id="addFolder" title="Ordner zur Bibliothek hinzufügen">+ Ordner</button></div>
+    <input class="search" id="search" type="search" placeholder="Suchen" aria-label="Vorlagen durchsuchen">
+    <div class="lib-tools">
+      <select id="sort" aria-label="Sortieren">
+        <option value="name">Sortieren: Name</option>
+        <option value="recent">Sortieren: Zuletzt geöffnet</option>
+        <option value="added">Sortieren: Neueste Dateien</option>
+      </select>
+      <button class="icon-btn" id="addCol" title="Sammlung anlegen, z. B. für einen Kunden">+ Sammlung</button>
+    </div>
+    <div class="lib" id="lib"></div>
+    <div class="drop-hint">.mogrt-Dateien hierher ziehen, um sie hinzuzufügen. Vorlagen auf eine Sammlung ziehen, um sie einzusortieren. Rechtsklick für mehr.</div>
+    <div class="lang"><button class="link" id="langBtn" title="Sprache / Language">English</button></div>
+  </aside>
+
+  <main class="stage">
+    <div class="stage-head"><h1 id="title">Keine Vorlage geöffnet</h1><span class="meta" id="meta"></span></div>
+    <div class="viewer" id="viewer">
+      <div class="empty" id="empty"><b>Wähle links eine Vorlage.</b><br>Du kannst Texte und Regler rechts anpassen und das Ergebnis als ProRes 4444 mit Alpha für Resolve rendern.</div>
+      <div class="frame checker" id="frame" hidden><img id="img" alt="Vorschau" draggable="false"><div class="safe"></div></div>
+    </div>
+    <div class="transport" id="transport" hidden>
+      <button class="play" id="play" aria-label="Abspielen"><svg viewBox="0 0 10 10" id="playIcon"><path d="M2 1l7 4-7 4z"/></svg></button>
+      <div class="tc" id="tc">00:00:00:00</div>
+      <div class="scrub-wrap"><input class="scrub" id="scrub" type="range" min="0" max="100" step="1" value="0" aria-label="Zeitposition"><div class="buffer" title="Vorausgerendert"><canvas id="buffer" height="1"></canvas></div></div>
+      <div class="view-opts">
+        <div class="seg" role="group" aria-label="Hintergrund">
+          <button data-bg="checker" aria-pressed="true" title="Transparenz">▦</button>
+          <button data-bg="black" aria-pressed="false" title="Schwarz">●</button>
+          <button data-bg="grey" aria-pressed="false" title="Grau">◐</button>
+          <button data-bg="white" aria-pressed="false" title="Weiß">○</button>
+        </div>
+        <div class="seg"><button id="safeBtn" aria-pressed="false" title="Title-/Action-Safe">Safe</button></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="pane right" aria-label="Regler">
+    <div class="pane-head"><h2>Essential Graphics</h2><button class="icon-btn" id="resetAll" hidden>Zurücksetzen</button></div>
+    <div id="fontwarn"></div>
+    <div class="controls" id="controls"></div>
+    <div class="render-box" id="renderBox" hidden>
+      <div class="row"><label for="fname">Dateiname</label><input type="text" id="fname"></div>
+      <div class="row"><label for="fmt">Format</label>
+        <select id="fmt">
+          <option value="prores4444">ProRes 4444 mit Alpha</option>
+          <option value="prores4444xq">ProRes 4444 XQ mit Alpha</option>
+          <option value="png-mov">PNG in MOV (verlustfrei, Alpha)</option>
+          <option value="h264">H.264 Vorschau (ohne Alpha)</option>
+        </select></div>
+      <div class="row"><label for="dur">Dauer</label><input type="text" id="dur" placeholder="Original" title="Sekunden (8,5), Timecode (00:00:08:12) oder Frames (200f)"><button class="icon-btn" id="durReset" title="Originaldauer">↺</button></div>
+      <div class="hint" id="durHint"></div>
+      <div class="row"><label for="outdir">Ziel</label><input type="text" id="outdir"><button class="icon-btn" id="pickOut" title="Zielordner wählen" hidden>…</button><button class="icon-btn" id="openOut" title="Ordner öffnen">↗</button></div>
+      <div class="btn-row"><button class="render-btn" id="renderBtn">Rendern</button><button class="secondary-btn" id="batchBtn" title="Mehrere Varianten auf einmal rendern">Stapel …</button></div>
+      <div class="extras"><button class="link" id="installResolve" title="Scripts für Workspace → Scripts in DaVinci Resolve anlegen">Resolve-Integration installieren</button><span id="gsHint"></span></div>
+    </div>
+  </aside>
+</div>
+<div class="modal" id="batchModal" hidden role="dialog" aria-modal="true" aria-labelledby="batchTitle">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2 id="batchTitle">Stapel-Rendering</h2>
+      <button class="icon-btn" id="bAdd">+ Zeile</button>
+      <button class="icon-btn" id="bImport">CSV importieren</button>
+      <button class="icon-btn" id="bTemplate">CSV-Vorlage speichern</button>
+      <button class="icon-btn" id="bClose" aria-label="Schließen">Schließen</button>
+      <p>Jede Zeile wird eine eigene Datei. Leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.</p>
+    </div>
+    <div class="sheet-body"><table class="batch" id="batchTable"></table></div>
+    <div class="sheet-foot"><span class="info" id="bInfo"></span><button class="render-btn" id="bRender">Rendern</button></div>
+  </div>
+</div>
+<input type="file" id="csvFile" accept=".csv,.tsv,.txt,text/csv" hidden>
+<div class="queue" id="queue"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const api = async (url, body) => {
+  const r = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error || m; } catch {} throw new Error(m); }
+  return r;
+};
+let lib = [], cfg = {}, cur = null, values = {}, t = 0, playing = false, frameBusy = false, pending = false;
+const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+
+// ---------- language: German or English (system language, switchable at the bottom left)
+const LANG = (() => {
+  const q = new URLSearchParams(location.search).get('lang');
+  if (q === 'de' || q === 'en') { try { localStorage.setItem('lang', JSON.stringify(q)); } catch {} return q; }
+  try { const s = JSON.parse(localStorage.getItem('lang')); if (s === 'de' || s === 'en') return s; } catch {}
+  return (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' : 'en';
+})();
+const EN = {
+  "Vorlagen": "Templates",
+  "Einzelne .mogrt-Dateien hinzufügen": "Add individual .mogrt files",
+  "+ Datei": "+ File",
+  "Ordner zur Bibliothek hinzufügen": "Add a folder to the library",
+  "+ Ordner": "+ Folder",
+  "Suchen": "Search",
+  "Vorlagen durchsuchen": "Search templates",
+  "Sortieren": "Sort",
+  "Sortieren: Name": "Sort: Name",
+  "Sortieren: Zuletzt geöffnet": "Sort: Recently opened",
+  "Sortieren: Neueste Dateien": "Sort: Newest files",
+  "Sammlung anlegen, z. B. für einen Kunden": "Create a collection, e.g. for a client",
+  "+ Sammlung": "+ Collection",
+  ".mogrt-Dateien hierher ziehen, um sie hinzuzufügen. Vorlagen auf eine Sammlung ziehen, um sie einzusortieren. Rechtsklick für mehr.": "Drop .mogrt files here to add them. Drag templates onto a collection to file them. Right-click for more.",
+  "Keine Vorlage geöffnet": "No template open",
+  "Wähle links eine Vorlage.": "Choose a template on the left.",
+  "Du kannst Texte und Regler rechts anpassen und das Ergebnis als ProRes 4444 mit Alpha für Resolve rendern.": "Adjust texts and controls on the right and render the result as ProRes 4444 with alpha for Resolve.",
+  "Vorschau": "Preview",
+  "Abspielen": "Play",
+  "Pause": "Pause",
+  "Zeitposition": "Time position",
+  "Vorausgerendert": "Rendered ahead",
+  "Hintergrund": "Background",
+  "Transparenz": "Transparency",
+  "Schwarz": "Black",
+  "Grau": "Grey",
+  "Weiß": "White",
+  "Title-/Action-Safe": "Title/action safe",
+  "Regler": "Controls",
+  "Zurücksetzen": "Reset",
+  "Dateiname": "File name",
+  "Format": "Format",
+  "ProRes 4444 mit Alpha": "ProRes 4444 with alpha",
+  "ProRes 4444 XQ mit Alpha": "ProRes 4444 XQ with alpha",
+  "PNG in MOV (verlustfrei, Alpha)": "PNG in MOV (lossless, alpha)",
+  "H.264 Vorschau (ohne Alpha)": "H.264 preview (no alpha)",
+  "Dauer": "Duration",
+  "Sekunden (8,5), Timecode (00:00:08:12) oder Frames (200f)": "Seconds (8.5), timecode (00:00:08:12) or frames (200f)",
+  "Originaldauer": "Original duration",
+  "Ziel": "Output",
+  "Zielordner wählen": "Choose output folder",
+  "Ordner öffnen": "Open folder",
+  "Rendern": "Render",
+  "Mehrere Varianten auf einmal rendern": "Render several variants at once",
+  "Stapel …": "Batch …",
+  "Scripts für Workspace → Scripts in DaVinci Resolve anlegen": "Install scripts for Workspace → Scripts in DaVinci Resolve",
+  "Resolve-Integration installieren": "Install Resolve integration",
+  "Stapel-Rendering": "Batch rendering",
+  "+ Zeile": "+ Row",
+  "CSV importieren": "Import CSV",
+  "CSV-Vorlage speichern": "Save CSV template",
+  "Schließen": "Close",
+  "Jede Zeile wird eine eigene Datei. Leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.": "Each row becomes its own file. Empty cells use the template default. Import tables from Excel or Numbers as CSV: columns are named like the controls, plus optional “filename” and “duration”.",
+  "Ändern fehlgeschlagen: {0}": "Change failed: {0}",
+  "Noch keine Vorlagen. Füge oben einen Ordner oder einzelne Dateien hinzu – oder ziehe .mogrt-Dateien in dieses Fenster.": "No templates yet. Add a folder or individual files above – or drop .mogrt files into this window.",
+  "Leer – Vorlagen hierher ziehen oder per Rechtsklick hinzufügen.": "Empty – drag templates here or add them via right-click.",
+  "Einzelne Dateien": "Individual files",
+  "Keine .mogrt-Dateien in diesem Ordner.": "No .mogrt files in this folder.",
+  "Keine Treffer.": "No matches.",
+  "{0} entfernte Vorlagen wieder anzeigen": "Show {0} removed templates again",
+  "1 entfernte Vorlage wieder anzeigen": "Show 1 removed template again",
+  "Umbenennen": "Rename",
+  "Sammlung löschen": "Delete collection",
+  "Die Vorlagen selbst bleiben erhalten.": "The templates themselves are kept.",
+  "Im Finder zeigen": "Show in Finder",
+  "Ordner aus der Liste entfernen": "Remove folder from list",
+  "Die Dateien auf der Festplatte bleiben erhalten.": "The files stay on disk.",
+  "Datei: {0}": "File: {0}",
+  "Originalnamen verwenden": "Use original name",
+  "Zu Sammlung hinzufügen": "Add to collection",
+  "Neue Sammlung …": "New collection …",
+  "Neue Sammlung": "New collection",
+  "Aus „{0}“ entfernen": "Remove from “{0}”",
+  "Aus der Liste entfernen": "Remove from list",
+  "Die Datei bleibt auf der Festplatte.": "The file stays on disk.",
+  "Mehr": "More",
+  "Vorlage konnte nicht geöffnet werden: {0}": "Could not open template: {0}",
+  "{0} (Original)": "{0} (original)",
+  "Fehlende Schrift: <b>{0}</b>. Die Vorschau nutzt eine Ersatzschrift. Freie Schriften lädt der Converter von Google Fonts, kommerzielle legst du selbst in den Font-Ordner.": "Missing font: <b>{0}</b>. The preview uses a substitute. Free fonts can be downloaded from Google Fonts, commercial ones go into the font folder.",
+  "Von Google Fonts laden": "Download from Google Fonts",
+  "Font-Ordner öffnen": "Open font folder",
+  "Lade …": "Loading …",
+  "Geladen: {0}": "Downloaded: {0}",
+  " – nicht gefunden: {0}": " – not found: {0}",
+  "Nicht bei Google Fonts: {0}": "Not on Google Fonts: {0}",
+  "Laden fehlgeschlagen: {0}": "Download failed: {0}",
+  "Reglertyp „{0}“ wird noch nicht unterstützt.": "Control type “{0}” is not supported yet.",
+  "Standard": "Default",
+  "Auf Standardwert zurücksetzen": "Reset to default",
+  "Bewegung": "Motion",
+  "Position, Skalierung, Drehung und Deckkraft zurücksetzen": "Reset position, scale, rotation and opacity",
+  "Position X": "Position X",
+  "Position Y": "Position Y",
+  "Skalierung": "Scale",
+  "Drehung": "Rotation",
+  "Deckkraft": "Opacity",
+  "Tipp: Die Grafik lässt sich in der Vorschau mit der Maus verschieben (Umschalttaste: nur senkrecht).": "Tip: drag the graphic in the preview with the mouse (Shift: vertical only).",
+  "Vorschau fehlgeschlagen: {0}": "Preview failed: {0}",
+  "Ordnerauswahl fehlgeschlagen: {0}": "Choosing a folder failed: {0}",
+  "Ordner mit .mogrt-Dateien (Pfad):": "Folder with .mogrt files (path):",
+  "Ordner hinzugefügt.": "Folder added.",
+  "Dateiauswahl fehlgeschlagen: {0}": "Choosing files failed: {0}",
+  "Installiert. In Resolve: Workspace → Scripts ({0} Scripts).": "Installed. In Resolve: Workspace → Scripts ({0} scripts).",
+  "Installation fehlgeschlagen: {0}": "Installation failed: {0}",
+  "Ghostscript fehlt – EPS-Logos nur als Vorschau.": "Ghostscript missing – EPS logos are preview quality only.",
+  "Nur .mogrt-Dateien können importiert werden.": "Only .mogrt files can be imported.",
+  "{0} konnte nicht importiert werden: {1}": "Could not import {0}: {1}",
+  "{0} Vorlagen importiert.": "{0} templates imported.",
+  "1 Vorlage importiert.": "1 template imported.",
+  "Gerendert: {0}": "Rendered: {0}",
+  "Rendern fehlgeschlagen: {0}": "Rendering failed: {0}",
+  "wartet": "queued",
+  "{0}/{1} Frames": "{0}/{1} frames",
+  "startet …": "starting …",
+  "fertig": "done",
+  "Fehler": "error",
+  "abgebrochen": "cancelled",
+  "Abbrechen": "Cancel",
+  "Ein- und Ausblendung bleiben bei geänderter Dauer erhalten.": "Intro and outro are kept when the duration changes.",
+  "Keine geschützten Bereiche – die Animation wird gedehnt.": "No protected regions – the animation is stretched.",
+  "Geschützt: {0} · Rest wird angepasst.": "Protected: {0} · the rest is adjusted.",
+  "Die ganze Animation wird gedehnt.": "The whole animation is stretched.",
+  "Dauer nicht erkannt. Beispiele: 8, 8,5, 00:00:08:12, 200f": "Duration not recognised. Examples: 8, 8.5, 00:00:08:12, 200f",
+  "1 Zeile": "1 row",
+  "{0} Zeilen": "{0} rows",
+  "Ziel: {0}": "Output: {0}",
+  "1 Datei rendern": "Render 1 file",
+  "{0} Dateien rendern": "Render {0} files",
+  "automatisch": "automatic",
+  "Dauer nicht erkannt": "Duration not recognised",
+  "Diese Zeile in der Vorschau zeigen": "Show this row in the preview",
+  "Zeile duplizieren": "Duplicate row",
+  "Zeile löschen": "Delete row",
+  "Zeile {0} in der Vorschau – Fenster schließen, um sie anzusehen.": "Row {0} is in the preview – close this window to see it.",
+  "{0} Zeilen importiert": "{0} rows imported",
+  " – ignoriert: {0}": " – ignored: {0}",
+  "Import fehlgeschlagen: {0}": "Import failed: {0}",
+  "Gespeichert: {0}": "Saved: {0}",
+  "Speichern fehlgeschlagen: {0}": "Saving failed: {0}",
+  "Stapel-Rendering – {0}": "Batch rendering – {0}",
+  "Zeile {0}": "Row {0}",
+  "{0} Renderings in der Warteschlange": "{0} renders queued",
+  "Stapel fehlgeschlagen: {0}": "Batch failed: {0}"
+};
+// UI texts are written in German; L() translates them (placeholders {0}, {1} …)
+function L(text, ...args) {
+  const s = LANG === 'en' && EN[text] !== undefined ? EN[text] : text;
+  return args.length ? s.replace(/\{(\d)\}/g, (_, i) => args[i]) : s;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function translatePage() {
+  document.documentElement.lang = LANG;
+  if (LANG === 'de') return;
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n; (n = walk.nextNode());) {
+    const k = n.nodeValue.trim();
+    if (k && EN[k] !== undefined) n.nodeValue = n.nodeValue.replace(k, EN[k]);
+  }
+  for (const el of document.querySelectorAll('[title],[placeholder],[aria-label],[alt]')) {
+    for (const a of ['title', 'placeholder', 'aria-label', 'alt']) {
+      const v = el.getAttribute(a);
+      if (v && EN[v] !== undefined) el.setAttribute(a, EN[v]);
+    }
+  }
+}
+translatePage();
+$('#langBtn').textContent = LANG === 'de' ? 'English' : 'Deutsch';
+$('#langBtn').onclick = () => { store.set('lang', LANG === 'de' ? 'en' : 'de'); location.reload(); };
+
+function toast(msg) { const el = $('#toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => el.style.display = 'none', 3200); }
+
+async function loadLibrary() {
+  const data = await (await api('/api/library')).json();
+  setLibrary(data);
+  $('#outdir').value = cfg.output_dir; $('#fmt').value = cfg.format || 'prores4444';
+}
+function setLibrary(data) {
+  lib = data.items; cfg = data.config; renderLibrary();
+  if (!cur) return;
+  const name = cfg.aliases[cur.path] || cur.template_name;  // renamed in the list
+  if (name !== cur.name) { if ($('#fname').value === cur.name) $('#fname').value = name; cur.name = name; $('#title').textContent = name; }
+}
+async function editLibrary(op, body = {}) {
+  try { setLibrary(await (await api('/api/library/edit', { op, ...body })).json()); }
+  catch (e) { toast(L('Ändern fehlgeschlagen: {0}', e.message)); }
+}
+
+// ---------- library list: collections, single files, folders
+const collapsed = new Set(store.get('collapsed', []));
+const shortPath = (p) => p.replace(/^\/Users\/[^/]+/, '~').replace(/^.*\/(?=[^/]+\/[^/]+$)/, '…/');
+function sortItems(items) {
+  const by = $('#sort').value;
+  const name = (a, b) => a.name.localeCompare(b.name, 'de', { numeric: true, sensitivity: 'base' });
+  if (by === 'recent') return [...items].sort((a, b) => (b.recent - a.recent) || name(a, b));
+  if (by === 'added') return [...items].sort((a, b) => (b.added - a.added) || name(a, b));
+  return [...items].sort(name);
+}
+function renderLibrary() {
+  const q = $('#search').value.trim().toLowerCase();
+  const el = $('#lib'); el.innerHTML = '';
+  if (!lib.length && !cfg.collections.length) {
+    el.innerHTML = `<div class="lib-empty">${L('Noch keine Vorlagen. Füge oben einen Ordner oder einzelne Dateien hinzu – oder ziehe .mogrt-Dateien in dieses Fenster.')}</div>`;
+    return libFoot(el);
+  }
+  const match = (i) => !q || i.name.toLowerCase().includes(q) || i.file.toLowerCase().includes(q);
+  const byPath = new Map(lib.map(i => [i.path, i]));
+  let shown = 0;
+  for (const c of cfg.collections) {
+    const items = sortItems(c.items.map(p => byPath.get(p)).filter(Boolean).filter(match));
+    if (q && !items.length) continue;
+    shown += items.length;
+    section(el, { key: 'col:' + c.id, label: c.name, items, col: c, empty: L('Leer – Vorlagen hierher ziehen oder per Rechtsklick hinzufügen.') });
+  }
+  const singles = sortItems(lib.filter(i => i.folder === '' && match(i)));
+  if (singles.length) { shown += singles.length; section(el, { key: 'files', label: L('Einzelne Dateien'), items: singles }); }
+  for (const d of cfg.library) {
+    const items = sortItems(lib.filter(i => i.folder === d && match(i)));
+    if (q && !items.length) continue;
+    shown += items.length;
+    section(el, { key: 'dir:' + d, label: shortPath(d), title: d, items, folder: d, empty: L('Keine .mogrt-Dateien in diesem Ordner.') });
+  }
+  if (q && !shown) el.innerHTML = `<div class="lib-empty">${L('Keine Treffer.')}</div>`;
+  libFoot(el);
+}
+function libFoot(el) {
+  if (!cfg.hidden || !cfg.hidden.length) return;
+  const f = document.createElement('div'); f.className = 'lib-foot';
+  const b = document.createElement('button'); b.className = 'link';
+  b.textContent = cfg.hidden.length > 1 ? L('{0} entfernte Vorlagen wieder anzeigen', cfg.hidden.length) : L('1 entfernte Vorlage wieder anzeigen');
+  b.onclick = () => editLibrary('unhide_all'); f.append(b); el.append(f);
+}
+function section(el, { key, label, title, items, col, folder, empty }) {
+  const sec = document.createElement('div'); sec.className = 'sec' + (col ? ' col' : '') + (collapsed.has(key) && !$('#search').value ? ' collapsed' : '');
+  sec.dataset.key = key;
+  const head = document.createElement('div'); head.className = 'sec-head';
+  const tog = document.createElement('button'); tog.className = 'tog'; tog.title = title || label;
+  tog.innerHTML = '<span class="lbl"></span><span class="cnt"></span>';
+  tog.querySelector('.lbl').textContent = label; tog.querySelector('.cnt').textContent = items.length;
+  tog.setAttribute('aria-expanded', !sec.classList.contains('collapsed'));
+  tog.onclick = () => {
+    const c = sec.classList.toggle('collapsed'); tog.setAttribute('aria-expanded', !c);
+    c ? collapsed.add(key) : collapsed.delete(key); store.set('collapsed', [...collapsed]);
+  };
+  head.append(tog);
+  if (col || folder) {
+    const more = moreBtn(head, () => col ? [
+      [L('Umbenennen'), () => inlineRename(tog.querySelector('.lbl'), col.name, (n) => editLibrary('collection_rename', { id: col.id, name: n }))],
+      [L('Sammlung löschen'), () => editLibrary('collection_delete', { id: col.id }), 'danger', L('Die Vorlagen selbst bleiben erhalten.')],
+    ] : [
+      [L('Im Finder zeigen'), () => api('/api/open-folder', { path: folder })],
+      [L('Ordner aus der Liste entfernen'), () => editLibrary('remove_folder', { folder }), 'danger', L('Die Dateien auf der Festplatte bleiben erhalten.')],
+    ]);
+    head.addEventListener('contextmenu', (e) => { e.preventDefault(); more.click(); });
+  }
+  if (col) dropTarget(head, (path) => editLibrary('collection_add', { id: col.id, path }));
+  sec.append(head);
+  const body = document.createElement('div'); body.className = 'sec-body';
+  if (!items.length && empty) body.innerHTML = `<div class="lib-empty">${empty}</div>`;
+  for (const it of items) body.append(tplButton(it, col));
+  if (col) dropTarget(body, (path) => editLibrary('collection_add', { id: col.id, path }), head);
+  sec.append(body); el.append(sec);
+}
+function tplButton(it, col) {
+  const w = document.createElement('div'); w.className = 'tpl-wrap';
+  const b = document.createElement('button'); b.className = 'tpl'; b.setAttribute('aria-current', !!(cur && cur.path === it.path));
+  b.innerHTML = `<img loading="lazy" alt=""><span class="n"></span>`;
+  b.title = it.name !== it.file ? `${it.name}\n${L('Datei: {0}', it.file)}` : it.name;
+  b.querySelector('img').src = '/api/thumb?path=' + encodeURIComponent(it.path);
+  b.querySelector('img').onerror = (e) => e.target.style.visibility = 'hidden';
+  b.querySelector('.n').textContent = it.name;
+  b.onclick = () => openTemplate(it.path);
+  b.draggable = true;
+  b.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-mogrt-path', it.path); e.dataTransfer.effectAllowed = 'copy'; });
+  w.append(b);
+  const more = moreBtn(w, () => {
+    const others = cfg.collections.filter(c => !c.items.includes(it.path));
+    return [
+      [L('Umbenennen'), () => inlineRename(b.querySelector('.n'), it.name, (n) => editLibrary('rename', { path: it.path, name: n === it.file ? '' : n }), it.file)],
+      ...(it.name !== it.file ? [[L('Originalnamen verwenden'), () => editLibrary('rename', { path: it.path, name: '' })]] : []),
+      '-', L('Zu Sammlung hinzufügen'),
+      ...others.map(c => [c.name, () => editLibrary('collection_add', { id: c.id, path: it.path })]),
+      [L('Neue Sammlung …'), () => newCollection([it.path])],
+      ...(col ? [[L('Aus „{0}“ entfernen', col.name), () => editLibrary('collection_remove', { id: col.id, path: it.path })]] : []),
+      '-',
+      [L('Im Finder zeigen'), () => api('/api/reveal', { path: it.path })],
+      [L('Aus der Liste entfernen'), () => editLibrary('remove', { path: it.path }), 'danger', L('Die Datei bleibt auf der Festplatte.')],
+    ];
+  });
+  b.addEventListener('contextmenu', (e) => { e.preventDefault(); more.click(); });
+  return w;
+}
+function moreBtn(parent, items) {
+  const m = document.createElement('button'); m.className = 'more'; m.textContent = '⋯'; m.title = L('Mehr'); m.setAttribute('aria-haspopup', 'menu');
+  m.onclick = (e) => { e.stopPropagation(); openMenu(m, items()); };
+  parent.append(m); return m;
+}
+function openMenu(anchor, items) {
+  closeMenu();
+  const menu = document.createElement('div'); menu.className = 'menu'; menu.setAttribute('role', 'menu'); menu.id = 'menu';
+  for (const it of items) {
+    if (it === '-') { menu.append(document.createElement('hr')); continue; }
+    if (typeof it === 'string') { const s = document.createElement('div'); s.className = 'sub'; s.textContent = it; menu.append(s); continue; }
+    const [label, fn, cls, title] = it;
+    const b = document.createElement('button'); b.setAttribute('role', 'menuitem'); b.textContent = label;
+    if (cls) b.className = cls; if (title) b.title = title;
+    b.onclick = () => { closeMenu(); fn(); };
+    menu.append(b);
+  }
+  document.body.append(menu);
+  const r = anchor.getBoundingClientRect(), mr = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(r.left, innerWidth - mr.width - 8)) + 'px';
+  menu.style.top = (r.bottom + mr.height + 8 > innerHeight ? Math.max(8, r.top - mr.height - 4) : r.bottom + 4) + 'px';
+  anchor.setAttribute('aria-expanded', 'true'); menu.anchor = anchor;
+  menu.querySelector('button')?.focus();
+}
+function closeMenu() { const m = $('#menu'); if (m) { m.anchor.setAttribute('aria-expanded', 'false'); m.remove(); } }
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#menu')) closeMenu(); });
+document.addEventListener('keydown', (e) => {
+  const m = $('#menu'); if (!m) return;
+  if (e.key === 'Escape') { const a = m.anchor; closeMenu(); a.focus(); e.stopPropagation(); }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); const bs = [...m.querySelectorAll('button')]; const i = bs.indexOf(document.activeElement);
+    bs[(i + (e.key === 'ArrowDown' ? 1 : -1) + bs.length) % bs.length].focus();
+  }
+}, true);
+function inlineRename(span, value, save, placeholder) {
+  const inp = document.createElement('input'); inp.className = 'rename'; inp.value = value; if (placeholder) inp.placeholder = placeholder;
+  const host = span.closest('button'); host.draggable = false;
+  span.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = (ok) => { if (done) return; done = true; const v = inp.value.trim(); if (ok && v !== value) save(v); else renderLibrary(); };
+  inp.onclick = (e) => e.stopPropagation();
+  inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); finish(true); } if (e.key === 'Escape') finish(false); if (e.key === ' ') e.stopPropagation(); };
+  inp.onkeyup = (e) => e.preventDefault();
+  inp.onblur = () => finish(true);
+}
+async function newCollection(paths = []) {
+  const before = new Set(cfg.collections.map(c => c.id));
+  await editLibrary('collection_create', { name: L('Neue Sammlung'), paths });
+  const c = cfg.collections.find(c => !before.has(c.id)); if (!c) return;
+  if ($('#search').value) { $('#search').value = ''; renderLibrary(); }
+  const lbl = document.querySelector(`.sec[data-key="col:${c.id}"] .lbl`);
+  if (lbl) { lbl.closest('.sec').scrollIntoView({ block: 'nearest' }); inlineRename(lbl, c.name, (n) => editLibrary('collection_rename', { id: c.id, name: n || c.name })); }
+}
+function dropTarget(el, onDrop, highlight = el) {
+  const isTpl = (e) => [...e.dataTransfer.types].includes('application/x-mogrt-path');
+  el.addEventListener('dragover', (e) => { if (!isTpl(e)) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; highlight.classList.add('drop'); });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) highlight.classList.remove('drop'); });
+  el.addEventListener('drop', (e) => { if (!isTpl(e)) return; e.preventDefault(); e.stopPropagation(); highlight.classList.remove('drop'); onDrop(e.dataTransfer.getData('application/x-mogrt-path')); });
+}
+$('#addCol').onclick = () => newCollection();
+$('#sort').value = store.get('sort', 'name');
+$('#sort').onchange = () => { store.set('sort', $('#sort').value); renderLibrary(); };
+
+async function openTemplate(path) {
+  stop();
+  try {
+    cur = await (await api('/api/open', { path })).json();
+  } catch (e) { toast(L('Vorlage konnte nicht geöffnet werden: {0}', e.message)); return; }
+  values = store.get('values:' + cur.path, {});
+  $('#title').textContent = cur.name;
+  $('#meta').textContent = `${cur.width}×${cur.height}  ${+cur.fps.toFixed(3)} fps  ${cur.duration.toFixed(2)} s`;
+  $('#empty').hidden = true; $('#frame').hidden = false; $('#transport').hidden = false; $('#renderBox').hidden = false; $('#resetAll').hidden = false;
+  $('#frame').style.aspectRatio = `${cur.width}/${cur.height}`;
+  durOverride = store.get('dur:' + cur.path, null);
+  $('#dur').value = durOverride ? fmtSec(durOverride) : '';
+  $('#dur').placeholder = L('{0} (Original)', fmtSec(cur.duration));
+  updateDurHint(); updateScrub();
+  t = Math.min(outDur() * 0.6, outDur() - 1 / cur.fps); $('#scrub').value = Math.round(t * cur.fps);
+  $('#fname').value = cur.name;
+  buildControls(); renderFontWarn(); renderLibrary(); fitFrame(); requestFrame();
+}
+
+function renderFontWarn() {
+  const missing = cur.fonts.filter(f => !f.ok);
+  const el = $('#fontwarn');
+  if (!missing.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="fontwarn">${L('Fehlende Schrift: <b>{0}</b>. Die Vorschau nutzt eine Ersatzschrift. Freie Schriften lädt der Converter von Google Fonts, kommerzielle legst du selbst in den Font-Ordner.', missing.map(f => esc(f.name)).join(', '))}<br>
+    <button class="icon-btn" data-act="google">${L('Von Google Fonts laden')}</button> <button class="icon-btn" data-act="folder">${L('Font-Ordner öffnen')}</button></div>`;
+  el.querySelector('[data-act=folder]').onclick = () => api('/api/open-folder', { path: cur.font_dir });
+  el.querySelector('[data-act=google]').onclick = async (e) => {
+    e.target.disabled = true; e.target.textContent = L('Lade …');
+    try {
+      const r = await (await api('/api/fonts/download', { path: cur.path })).json();
+      const ok = Object.entries(r.result).filter(([, v]) => v).map(([k]) => k);
+      const no = Object.entries(r.result).filter(([, v]) => !v).map(([k]) => k);
+      toast(ok.length ? L('Geladen: {0}', ok.join(', ')) + (no.length ? L(' – nicht gefunden: {0}', no.join(', ')) : '') : L('Nicht bei Google Fonts: {0}', no.join(', ')));
+      await openTemplate(cur.path);
+    } catch (err) { toast(L('Laden fehlgeschlagen: {0}', err.message)); e.target.disabled = false; }
+  };
+}
+
+function rgbToHex(c) { return '#' + c.slice(0, 3).map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join(''); }
+function hexToRgb(h) { return [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16) / 255).concat([1]); }
+
+// values are keyed by control name (readable, survives template updates), by id if the name is not unique
+function vkey(c) { return cur.controls.filter(x => x.name === c.name && x.type !== 'group').length > 1 ? c.id : c.name; }
+function buildControls() {
+  const el = $('#controls'); el.innerHTML = '';
+  for (const c of cur.controls) {
+    const val = values[vkey(c)] !== undefined ? values[vkey(c)] : c.default;
+    const f = document.createElement('div'); f.className = 'field';
+    const id = 'c_' + c.id;
+    const set = (v) => { values[vkey(c)] = v; store.set('values:' + cur.path, values); requestFrame(); };
+    if (c.type === 'group') {
+      f.className = 'group-note'; f.innerHTML = `<h3></h3><p></p>`;
+      f.querySelector('h3').textContent = c.name; f.querySelector('p').textContent = c.default || '';
+    } else if (c.type === 'text') {
+      f.innerHTML = `<label for="${id}"></label><textarea id="${id}" rows="${Math.max(1, String(val).split('\n').length)}"></textarea>`;
+      const ta = f.querySelector('textarea'); ta.value = val;
+      ta.oninput = () => { ta.rows = Math.max(1, ta.value.split('\n').length); set(ta.value); };
+    } else if (c.type === 'slider' || c.type === 'angle') {
+      const lo = c.min ?? 0, hi = c.max ?? 100, wide = hi - lo > 1000;
+      f.innerHTML = `<label for="${id}"></label><div class="row">${wide ? '' : `<input type="range" min="${lo}" max="${hi}" step="any">`}<input type="number" id="${id}" step="any"></div>`;
+      const n = f.querySelector('input[type=number]'), r = f.querySelector('input[type=range]');
+      n.value = val; if (r) r.value = val;
+      n.oninput = () => { if (r) r.value = n.value; set(parseFloat(n.value) || 0); };
+      if (r) r.oninput = () => { n.value = r.value; set(parseFloat(r.value)); };
+    } else if (c.type === 'checkbox') {
+      f.innerHTML = `<label class="check"><input type="checkbox" id="${id}"><span></span></label>`;
+      const cb = f.querySelector('input'); cb.checked = !!val; f.querySelector('span').textContent = c.name;
+      cb.onchange = () => set(cb.checked);
+    } else if (c.type === 'color') {
+      f.innerHTML = `<label for="${id}"></label><div class="row color-row"><input type="color" id="${id}"><span class="hex"></span></div>`;
+      const ci = f.querySelector('input'); ci.value = rgbToHex(val); f.querySelector('.hex').textContent = ci.value;
+      ci.oninput = () => { f.querySelector('.hex').textContent = ci.value; set(hexToRgb(ci.value)); };
+    } else if (c.type === 'point' || c.type === 'point3d') {
+      f.innerHTML = `<label></label>` + ['X', 'Y'].map(a => `<div class="motion-row"><span class="axis">${a}</span><input type="range" step="any"><input type="number" step="any"></div>`).join('');
+      const cur2 = [+val[0], +val[1]], size = [cur.width, cur.height];
+      const nums = f.querySelectorAll('input[type=number]'), ranges = f.querySelectorAll('input[type=range]');
+      const upd = () => set([parseFloat(nums[0].value) || 0, parseFloat(nums[1].value) || 0, ...(val.length > 2 ? [val[2]] : [])]);
+      [0, 1].forEach(i => {
+        const r = ranges[i], n = nums[i], d = +c.default[i];
+        // same range as Premiere's position: the frame plus half a frame around it (and the default)
+        r.min = Math.min(-size[i] / 2, d, cur2[i]); r.max = Math.max(size[i] * 1.5, d, cur2[i]);
+        n.value = r.value = +cur2[i].toFixed(1);
+        n.oninput = () => { r.value = n.value; upd(); };
+        r.oninput = () => { n.value = (+r.value).toFixed(1); upd(); };
+      });
+    } else if (c.type === 'scale') {
+      f.innerHTML = `<label for="${id}"></label><div class="row"><input type="range" min="10" max="300" step="any"><input type="number" id="${id}" step="any"></div>`;
+      const n = f.querySelector('input[type=number]'), r = f.querySelector('input[type=range]'); n.value = val[0]; r.value = val[0];
+      n.oninput = () => { r.value = n.value; const v = parseFloat(n.value) || 0; set([v, v]); };
+      r.oninput = () => { n.value = (+r.value).toFixed(1); const v = parseFloat(r.value); set([v, v]); };
+    } else {
+      f.innerHTML = `<label></label><div class="row" style="color:var(--muted)">${L('Reglertyp „{0}“ wird noch nicht unterstützt.', esc(c.type))}</div>`;
+    }
+    const lab = f.querySelector('label:not(.check)'); if (lab) { lab.textContent = c.name; }
+    if (c.type !== 'group' && lab) {
+      const rs = document.createElement('button'); rs.className = 'reset'; rs.textContent = L('Standard'); rs.title = L('Auf Standardwert zurücksetzen');
+      rs.onclick = () => { delete values[vkey(c)]; store.set('values:' + cur.path, values); buildControls(); requestFrame(); };
+      lab.style.display = 'flex'; lab.append(rs);
+    }
+    el.append(f);
+  }
+  buildMotion();
+}
+
+// ---------- motion (Premiere "Bewegung")
+let motion = null;
+const motionDefault = () => ({ position: [cur.width / 2, cur.height / 2], scale: 100, rotation: 0, opacity: 100 });
+function motionIsDefault(m) { const d = motionDefault(); return Math.abs(m.position[0] - d.position[0]) < 0.01 && Math.abs(m.position[1] - d.position[1]) < 0.01 && m.scale === 100 && m.rotation === 0 && m.opacity === 100; }
+function motionPayload() { return motion && !motionIsDefault(motion) ? motion : null; }
+function setMotion(m, rebuild = true) {
+  motion = m; store.set('motion:' + cur.path, motionIsDefault(m) ? null : m);
+  if (rebuild) syncMotionUI();
+  requestFrame();
+}
+function buildMotion() {
+  motion = store.get('motion:' + cur.path, null) || motionDefault();
+  const el = $('#controls');
+  const wrap = document.createElement('div'); wrap.id = 'motionBox';
+  wrap.innerHTML = `<div class="motion-head"><h3>${L('Bewegung')}</h3><button class="reset" id="mReset" title="${L('Position, Skalierung, Drehung und Deckkraft zurücksetzen')}">${L('Zurücksetzen')}</button></div>
+    <div class="motion-row"><label for="mX">${L('Position X')}</label><input type="range" id="mXr" step="1"><input type="number" id="mX" step="1"></div>
+    <div class="motion-row"><label for="mY">${L('Position Y')}</label><input type="range" id="mYr" step="1"><input type="number" id="mY" step="1"></div>
+    <div class="motion-row"><label for="mS">${L('Skalierung')}</label><input type="range" id="mSr" min="10" max="300" step="1"><input type="number" id="mS" step="any"></div>
+    <div class="motion-row"><label for="mR">${L('Drehung')}</label><input type="range" id="mRr" min="-180" max="180" step="0.5"><input type="number" id="mR" step="any"></div>
+    <div class="motion-row"><label for="mO">${L('Deckkraft')}</label><input type="range" id="mOr" min="0" max="100" step="1"><input type="number" id="mO" step="any"></div>
+    <div class="hint" style="margin-left:0">${L('Tipp: Die Grafik lässt sich in der Vorschau mit der Maus verschieben (Umschalttaste: nur senkrecht).')}</div>`;
+  el.append(wrap);
+  const num = (id) => parseFloat($(id).value);
+  // position sliders cover the frame plus half a frame on each side (number fields go further)
+  $('#mXr').min = -cur.width / 2; $('#mXr').max = cur.width * 1.5;
+  $('#mYr').min = -cur.height / 2; $('#mYr').max = cur.height * 1.5;
+  for (const [i, n, r] of [[0, '#mX', '#mXr'], [1, '#mY', '#mYr']]) {
+    const put = (v) => { const p = [...motion.position]; p[i] = v; setMotion({ ...motion, position: p }, false); };
+    $(n).oninput = () => { $(r).value = $(n).value; put(num(n) || 0); };
+    $(r).oninput = () => { $(n).value = $(r).value; put(num(r)); };
+  }
+  for (const [k, n, r] of [['scale', '#mS', '#mSr'], ['rotation', '#mR', '#mRr'], ['opacity', '#mO', '#mOr']]) {
+    $(n).oninput = () => { $(r).value = $(n).value; setMotion({ ...motion, [k]: isNaN(num(n)) ? motionDefault()[k] : num(n) }, false); };
+    $(r).oninput = () => { $(n).value = $(r).value; setMotion({ ...motion, [k]: num(r) }, false); };
+  }
+  $('#mReset').onclick = () => setMotion(motionDefault());
+  syncMotionUI();
+}
+function syncMotionUI() {
+  if (!$('#motionBox')) return;
+  const r1 = (x) => Math.round(x * 10) / 10;
+  $('#mX').value = $('#mXr').value = r1(motion.position[0]); $('#mY').value = $('#mYr').value = r1(motion.position[1]);
+  $('#mS').value = $('#mSr').value = r1(motion.scale);
+  $('#mR').value = $('#mRr').value = r1(motion.rotation);
+  $('#mO').value = $('#mOr').value = r1(motion.opacity);
+  $('#frame').classList.add('movable');
+}
+// drag the graphic in the preview
+(() => {
+  const fr = $('#frame');
+  let drag = null;
+  fr.addEventListener('pointerdown', (e) => {
+    if (!cur || e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, pos: [...motion.position], k: cur.width / fr.getBoundingClientRect().width };
+    fr.setPointerCapture(e.pointerId); fr.classList.add('dragging'); e.preventDefault();
+  });
+  fr.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.shiftKey ? 0 : (e.clientX - drag.x) * drag.k;
+    const dy = (e.clientY - drag.y) * drag.k;
+    motion = { ...motion, position: [Math.round(drag.pos[0] + dx), Math.round(drag.pos[1] + dy)] };
+    syncMotionUI(); requestFrame();
+  });
+  const end = (e) => { if (!drag) return; drag = null; fr.classList.remove('dragging'); setMotion(motion); };
+  fr.addEventListener('pointerup', end); fr.addEventListener('pointercancel', end);
+})();
+
+function tcString(sec) {
+  const fps = Math.round(cur.fps), fr = Math.round(sec * cur.fps);
+  const f = fr % fps, s = Math.floor(fr / fps), p = (n) => String(n).padStart(2, '0');
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}:${p(f)}<small>${(sec).toFixed(2)} s</small>`;
+}
+
+function previewScale(play = false) {
+  const box = $('#frame').getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  return Math.round(1000 * Math.min(1, Math.max(0.15, (box.width * dpr) / cur.width * (play ? 0.6 : 1)))) / 1000;
+}
+
+// ---------- playback: frames are rendered ahead on all cores and cached on the server
+let playScale = 0, prefetchKey = null, buffered = new Set();
+const previewState = (scale) => ({ path: cur.path, values, scale, duration: durOverride, motion: motionPayload() });
+async function startPrefetch() {
+  try {
+    const r = await (await api('/api/prefetch', { ...previewState(playScale), frame: Math.round(t * cur.fps) })).json();
+    if (r.key !== prefetchKey) { prefetchKey = r.key; buffered = new Set(); }
+    pollBuffer();
+  } catch {}
+}
+async function pollBuffer() {
+  if (pollBuffer.busy) return; pollBuffer.busy = true;
+  try {
+    while (cur && prefetchKey) {
+      const key = prefetchKey;
+      const r = await (await api('/api/prefetch/status', { key })).json();
+      if (key !== prefetchKey) continue;
+      buffered = new Set(r.frames); drawBuffer();
+      if (buffered.size >= Math.round(outDur() * cur.fps) || !playing) break;
+      await new Promise(res => setTimeout(res, 300));
+    }
+  } catch {}
+  pollBuffer.busy = false;
+}
+function drawBuffer() {
+  const cv = $('#buffer'), n = Math.max(1, Math.round(outDur() * (cur ? cur.fps : 1)));
+  cv.width = n; const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, n, 1);
+  if (!playScale || !prefetchKey) return;
+  ctx.fillStyle = 'rgba(232,177,58,.55)';
+  for (const f of buffered) if (f < n) ctx.fillRect(f, 0, 1, 1);
+}
+let stateSig = '';
+function invalidatePlayback() {
+  const had = prefetchKey; prefetchKey = null; buffered = new Set(); drawBuffer();
+  if (playing) startPrefetch(); else if (had) api('/api/prefetch/stop', {}).catch(() => {});
+}
+
+async function requestFrame() {
+  if (!cur) return;
+  if (frameBusy) { pending = true; return; }
+  frameBusy = true;
+  const sig = JSON.stringify([cur.path, values, durOverride, motionPayload()]);
+  if (sig !== stateSig) { stateSig = sig; invalidatePlayback(); }
+  $('#tc').innerHTML = tcString(t);
+  try {
+    // while playing, ask for exact frame numbers at a fixed scale so the server can use its cache
+    const frame = Math.min(Math.round(t * cur.fps), Math.round(outDur() * cur.fps) - 1);
+    const body = playing ? { ...previewState(playScale), frame, t: frame / cur.fps } : { ...previewState(previewScale()), t };
+    const r = await api('/api/frame', body);
+    const url = URL.createObjectURL(await r.blob());
+    const img = $('#img'); const old = img.src; img.src = url; if (old.startsWith('blob:')) URL.revokeObjectURL(old);
+  } catch (e) { toast(L('Vorschau fehlgeschlagen: {0}', e.message)); stop(); }
+  if (playing) {
+    // wait for the next frame boundary (cached frames come back much faster than real time)
+    const shownFrame = Math.round(t * cur.fps);
+    advance();
+    const wait = ((shownFrame + 1) / cur.fps - t) * 1000;
+    if (Math.round(t * cur.fps) === shownFrame && wait > 0) await new Promise(r => setTimeout(r, wait));
+    frameBusy = false;
+    if (playing) { pending = false; advance(); requestFrame(); return; }
+  }
+  frameBusy = false;
+  if (pending) { pending = false; requestFrame(); }
+}
+
+let playStart = 0, playT0 = 0;
+function advance() {
+  const now = performance.now() / 1000;
+  t = playT0 + (now - playStart);
+  if (t >= outDur()) { playT0 = 0; playStart = now; t = 0; }
+  $('#scrub').value = Math.round(t * cur.fps);
+}
+function play() {
+  if (!cur) return; playing = true; playStart = performance.now() / 1000; playT0 = t;
+  const sc = previewScale(true); if (sc !== playScale) { playScale = sc; prefetchKey = null; }
+  startPrefetch(); $('#playIcon').innerHTML = '<path d="M2 1h2v8H2zM6 1h2v8H6z"/>'; $('#play').setAttribute('aria-label', L('Pause')); requestFrame(); }
+function stop() { playing = false; $('#playIcon').innerHTML = '<path d="M2 1l7 4-7 4z"/>'; $('#play').setAttribute('aria-label', L('Abspielen')); }
+$('#play').onclick = () => playing ? (stop(), requestFrame()) : play();
+$('#scrub').oninput = () => { stop(); t = $('#scrub').value / cur.fps; requestFrame(); };
+document.addEventListener('keydown', (e) => {
+  if (!cur || ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement.tagName)) return;
+  if (e.code === 'Space') { e.preventDefault(); $('#play').click(); }
+  if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+    stop(); const fr = Math.round(t * cur.fps) + (e.code === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 10 : 1);
+    t = Math.max(0, Math.min(outDur() - 1 / cur.fps, fr / cur.fps)); $('#scrub').value = Math.round(t * cur.fps); requestFrame();
+  }
+});
+
+document.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-bg]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  $('#frame').className = 'frame ' + b.dataset.bg + ($('#safeBtn').getAttribute('aria-pressed') === 'true' ? ' show-safe' : '');
+  store.set('bg', b.dataset.bg);
+});
+$('#safeBtn').onclick = () => { const on = $('#safeBtn').getAttribute('aria-pressed') !== 'true'; $('#safeBtn').setAttribute('aria-pressed', on); $('#frame').classList.toggle('show-safe', on); };
+$('#resetAll').onclick = () => { values = {}; store.set('values:' + cur.path, values); buildControls(); requestFrame(); };
+$('#search').oninput = renderLibrary;
+
+function fitFrame() {
+  if (!cur) return;
+  const v = $('#viewer').getBoundingClientRect();
+  const W = v.width - 36, H = v.height - 32, ar = cur.width / cur.height;
+  let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
+  $('#frame').style.width = w + 'px'; $('#frame').style.height = h + 'px';
+}
+window.addEventListener('resize', () => { fitFrame(); clearTimeout(fitFrame.h); fitFrame.h = setTimeout(requestFrame, 200); });
+
+const desk = () => window.pywebview && window.pywebview.api;
+// called by the desktop shell when a .mogrt is opened via Finder / Explorer
+window.openExternal = async (paths) => {
+  if (!paths || !paths.length) return;
+  await api('/api/config', { add_files: paths }); await loadLibrary(); openTemplate(paths[paths.length - 1]);
+};
+function enableDesktop() { $('#addFiles').hidden = false; $('#pickOut').hidden = false; }
+window.addEventListener('pywebviewready', enableDesktop);
+if (desk()) enableDesktop();
+$('#addFolder').onclick = async () => {
+  let p;
+  try { p = desk() ? await desk().pick_folder('') : prompt(L('Ordner mit .mogrt-Dateien (Pfad):'), '~/Movies/MOGRTs'); }
+  catch (e) { toast(L('Ordnerauswahl fehlgeschlagen: {0}', e.message || e)); return; }
+  if (!p) return;
+  await api('/api/config', { add_library: p }); await loadLibrary(); toast(L('Ordner hinzugefügt.'));
+};
+$('#addFiles').onclick = async () => {
+  let files;
+  try { files = await desk().pick_mogrts(); } catch (e) { toast(L('Dateiauswahl fehlgeschlagen: {0}', e.message || e)); return; }
+  if (!files || !files.length) return;
+  await api('/api/config', { add_files: files }); await loadLibrary();
+  openTemplate(files[files.length - 1].replace(/^file:\/\//, ''));
+};
+$('#pickOut').onclick = async () => {
+  const p = await desk().pick_folder($('#outdir').value);
+  if (!p) return;
+  $('#outdir').value = p; api('/api/config', { output_dir: p });
+};
+$('#installResolve').onclick = async () => {
+  try { const r = await (await api('/api/install-resolve', {})).json(); toast(L('Installiert. In Resolve: Workspace → Scripts ({0} Scripts).', r.files.length)); }
+  catch (e) { toast(L('Installation fehlgeschlagen: {0}', e.message)); }
+};
+api('/api/status').then(r => r.json()).then(s => {
+  if (!s.ghostscript) $('#gsHint').textContent = L('Ghostscript fehlt – EPS-Logos nur als Vorschau.');
+}).catch(() => {});
+$('#outdir').onchange = () => api('/api/config', { output_dir: $('#outdir').value });
+$('#fmt').onchange = () => api('/api/config', { format: $('#fmt').value });
+$('#openOut').onclick = () => api('/api/open-folder', { path: $('#outdir').value });
+
+// drag & drop import
+const isFileDrag = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+document.addEventListener('dragover', (e) => { e.preventDefault(); if (isFileDrag(e)) document.body.classList.add('dragging'); });
+document.addEventListener('dragleave', (e) => { if (e.target === document.documentElement || !e.relatedTarget) document.body.classList.remove('dragging'); });
+document.addEventListener('drop', async (e) => {
+  e.preventDefault(); document.body.classList.remove('dragging');
+  if (!isFileDrag(e)) return;
+  const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.mogrt'));
+  if (!files.length) { toast(L('Nur .mogrt-Dateien können importiert werden.')); return; }
+  // desktop app: the native drop handler receives the real file paths (see desktop.py)
+  if (desk() || files.some(f => f.pywebviewFullPath)) return;
+  let last = null, ok = 0;
+  for (const f of files) {
+    try {
+      const r = await fetch('/api/upload', { method: 'POST', headers: { 'X-Filename': encodeURIComponent(f.name) }, body: await f.arrayBuffer() });
+      const j = await r.json();
+      if (!r.ok || !j.path) throw new Error(j.error || r.statusText);
+      last = j.path; ok++;
+    } catch (err) { toast(L('{0} konnte nicht importiert werden: {1}', f.name, err.message)); }
+  }
+  if (!ok) return;
+  await loadLibrary(); toast(ok > 1 ? L('{0} Vorlagen importiert.', ok) : L('1 Vorlage importiert.'));
+  if (last) openTemplate(last);
+});
+
+// rendering
+const jobs = new Map();
+$('#renderBtn').onclick = async () => {
+  if (!cur) return;
+  const r = await (await api('/api/render', { path: cur.path, values, format: $('#fmt').value, output_dir: $('#outdir').value, filename: $('#fname').value, duration: durOverride, motion: motionPayload() })).json();
+  jobs.set(r.id, { id: r.id, name: $('#fname').value, status: 'queued', done: 0, total: 0 });
+  drawQueue(); poll();
+};
+let polling = false;
+async function poll() {
+  if (polling) return; polling = true;
+  while ([...jobs.values()].some(j => j.status === 'running' || j.status === 'queued')) {
+    for (const j of jobs.values()) {
+      if (j.status !== 'running' && j.status !== 'queued') continue;
+      try { Object.assign(j, await (await api('/api/job/' + j.id)).json()); } catch {}
+      if (j.status === 'done') toast(L('Gerendert: {0}', j.output.split(/[\\/]/).pop()));
+      if (j.status === 'error') toast(L('Rendern fehlgeschlagen: {0}', j.error));
+    }
+    drawQueue();
+    await new Promise(r => setTimeout(r, 400));
+  }
+  polling = false;
+}
+function drawQueue() {
+  const el = $('#queue'); el.innerHTML = '';
+  for (const j of [...jobs.values()].reverse()) {
+    const d = document.createElement('div'); d.className = 'job ' + j.status;
+    const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+    const state = { queued: L('wartet'), running: j.total ? L('{0}/{1} Frames', j.done, j.total) : L('startet …'), done: L('fertig'), error: L('Fehler'), cancelled: L('abgebrochen') }[j.status];
+    d.innerHTML = `<div class="t"></div><div class="bar"><i style="width:${j.status === 'done' ? 100 : pct}%"></i></div><div class="act"></div>`;
+    d.querySelector('.t').innerHTML = `<span></span><small>${state}</small>`; d.querySelector('.t span').textContent = j.filename || j.name;
+    const act = d.querySelector('.act');
+    if (j.status === 'running' || j.status === 'queued') { const b = document.createElement('button'); b.textContent = L('Abbrechen'); b.onclick = () => api(`/api/job/${j.id}/cancel`, {}); act.append(b); }
+    if (j.status === 'done') { const b = document.createElement('button'); b.textContent = L('Im Finder zeigen'); b.onclick = () => api('/api/reveal', { path: j.output }); act.append(b); }
+    el.append(d);
+  }
+}
+
+
+// ---------- duration
+let durOverride = null;
+const outDur = () => (durOverride || (cur ? cur.duration : 0));
+function fmtSec(x) { const v = (Math.round(x * 100) / 100).toString(); return LANG === 'de' ? v.replace('.', ',') : v; }
+function parseDur(text) {
+  let s = String(text || '').trim().toLowerCase().replace(/s$/, '').trim();
+  if (!s) return null;
+  if (s.includes(':')) {
+    const p = s.split(':').map(v => parseFloat(v.replace(',', '.')));
+    if (p.some(isNaN)) return NaN;
+    if (p.length === 4) return p[0] * 3600 + p[1] * 60 + p[2] + p[3] / cur.fps;
+    if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+    if (p.length === 2) return p[0] * 60 + p[1];
+  }
+  if (/^\d+f$/.test(s)) return parseInt(s) / cur.fps;
+  return parseFloat(s.replace(',', '.'));
+}
+function updateScrub() { $('#scrub').max = Math.max(0, Math.round(outDur() * cur.fps) - 1); }
+function updateDurHint() {
+  const regs = cur.protected || [];
+  $('#meta').textContent = `${cur.width}×${cur.height}  ${+cur.fps.toFixed(3)} fps  ${fmtSec(cur.duration)} s` + (durOverride ? ` → ${fmtSec(durOverride)} s` : '');
+  const el = $('#durHint');
+  if (!durOverride) { el.textContent = regs.length ? L('Ein- und Ausblendung bleiben bei geänderter Dauer erhalten.') : L('Keine geschützten Bereiche – die Animation wird gedehnt.'); return; }
+  el.textContent = regs.length ? L('Geschützt: {0} · Rest wird angepasst.', regs.map(([a, b]) => `${fmtSec(a)}–${fmtSec(b)} s`).join(', ')) : L('Die ganze Animation wird gedehnt.');
+}
+$('#dur').onchange = () => {
+  const v = parseDur($('#dur').value);
+  if (v !== null && (isNaN(v) || v <= 0)) { toast(L('Dauer nicht erkannt. Beispiele: 8, 8,5, 00:00:08:12, 200f')); $('#dur').value = durOverride ? fmtSec(durOverride) : ''; return; }
+  durOverride = (v && Math.abs(v - cur.duration) > 1e-3) ? v : null;
+  $('#dur').value = durOverride ? fmtSec(durOverride) : '';
+  store.set('dur:' + cur.path, durOverride);
+  updateDurHint(); updateScrub(); t = Math.min(t, outDur() - 1 / cur.fps); $('#scrub').value = Math.round(t * cur.fps); requestFrame();
+};
+$('#durReset').onclick = () => { $('#dur').value = ''; $('#dur').onchange(); };
+
+// ---------- batch
+const BATCH_TYPES = ['text', 'slider', 'angle', 'checkbox', 'color', 'point', 'point3d', 'scale'];
+let batchRows = [], batchActive = -1;
+const batchControls = () => cur.controls.filter(c => BATCH_TYPES.includes(c.type));
+function rowFromCurrent() {
+  const v = {};
+  for (const c of batchControls()) v[c.id] = values[vkey(c)] !== undefined ? values[vkey(c)] : c.default;
+  return { values: v, filename: '', duration: durOverride ? fmtSec(durOverride) : '' };
+}
+function saveBatch() { store.set('batch:' + cur.path, batchRows); const k = batchRows.length; $('#bInfo').textContent = `${k === 1 ? L('1 Zeile') : L('{0} Zeilen', k)} · ${L('Ziel: {0}', $('#outdir').value)} · ${$('#fmt').selectedOptions[0].textContent}`; $('#bRender').textContent = k === 1 ? L('1 Datei rendern') : L('{0} Dateien rendern', k); $('#bRender').disabled = !batchRows.length; }
+function cellEditor(c, row) {
+  const v = row.values[c.id] !== undefined ? row.values[c.id] : c.default;
+  const set = (x) => { row.values[c.id] = x; saveBatch(); };
+  let el;
+  if (c.type === 'text') {
+    el = document.createElement('textarea'); el.value = v; el.rows = Math.max(1, String(v).split('\n').length);
+    el.oninput = () => { el.rows = Math.max(1, el.value.split('\n').length); set(el.value); };
+  } else if (c.type === 'checkbox') {
+    el = document.createElement('input'); el.type = 'checkbox'; el.checked = !!v; el.onchange = () => set(el.checked);
+  } else if (c.type === 'color') {
+    el = document.createElement('input'); el.type = 'color'; el.value = rgbToHex(v); el.oninput = () => set(hexToRgb(el.value));
+  } else if (c.type === 'slider' || c.type === 'angle') {
+    el = document.createElement('input'); el.type = 'number'; el.step = 'any'; el.className = 'w-num'; el.value = v; el.oninput = () => set(parseFloat(el.value) || 0);
+  } else {
+    el = document.createElement('input'); el.type = 'text'; el.className = 'w-pt';
+    const arr = Array.isArray(v) ? v : [v];
+    el.value = (c.type === 'scale' ? arr.slice(0, 1) : arr.slice(0, 2)).map(x => +(+x).toFixed(2)).join(' ');
+    el.onchange = () => { const n = el.value.split(/[\s;,]+/).filter(Boolean).map(parseFloat).filter(x => !isNaN(x)); if (!n.length) return; set(c.type === 'scale' ? [n[0], n[0]] : n); };
+  }
+  el.setAttribute('aria-label', c.name);
+  return el;
+}
+function renderBatch() {
+  const tbl = $('#batchTable'); tbl.innerHTML = '';
+  const ctrls = batchControls();
+  const thead = document.createElement('thead'); const hr = document.createElement('tr');
+  for (const h of ['#', L('Dateiname'), ...ctrls.map(c => c.name), L('Dauer'), '']) { const th = document.createElement('th'); th.textContent = h; hr.append(th); }
+  thead.append(hr); tbl.append(thead);
+  const tb = document.createElement('tbody');
+  batchRows.forEach((row, i) => {
+    const tr = document.createElement('tr'); if (i === batchActive) tr.className = 'active';
+    const num = document.createElement('td'); num.className = 'num'; num.textContent = i + 1; tr.append(num);
+    const tdf = document.createElement('td'); const fi = document.createElement('input'); fi.type = 'text'; fi.className = 'w-file';
+    fi.placeholder = L('automatisch'); fi.value = row.filename || ''; fi.oninput = () => { row.filename = fi.value; saveBatch(); }; tdf.append(fi); tr.append(tdf);
+    for (const c of ctrls) { const td = document.createElement('td'); td.append(cellEditor(c, row)); tr.append(td); }
+    const tdd = document.createElement('td'); const di = document.createElement('input'); di.type = 'text'; di.className = 'w-dur';
+    di.placeholder = fmtSec(cur.duration); di.value = row.duration || '';
+    di.onchange = () => { const v = parseDur(di.value); if (di.value && (isNaN(v) || v <= 0)) { toast(L('Dauer nicht erkannt')); di.value = row.duration || ''; return; } row.duration = di.value.trim(); saveBatch(); };
+    tdd.append(di); tr.append(tdd);
+    const acts = document.createElement('td'); acts.className = 'acts';
+    const mk = (label, title, fn) => { const b = document.createElement('button'); b.textContent = label; b.title = title; b.onclick = fn; acts.append(b); };
+    mk(L('Vorschau'), L('Diese Zeile in der Vorschau zeigen'), () => previewRow(i));
+    mk('⧉', L('Zeile duplizieren'), () => { batchRows.splice(i + 1, 0, JSON.parse(JSON.stringify(row))); saveBatch(); renderBatch(); });
+    mk('✕', L('Zeile löschen'), () => { batchRows.splice(i, 1); if (batchActive >= batchRows.length) batchActive = -1; saveBatch(); renderBatch(); });
+    tr.append(acts); tb.append(tr);
+  });
+  tbl.append(tb); saveBatch();
+}
+function previewRow(i) {
+  const row = batchRows[i]; batchActive = i;
+  values = {};
+  for (const c of batchControls()) if (row.values[c.id] !== undefined) values[vkey(c)] = row.values[c.id];
+  store.set('values:' + cur.path, values);
+  const d = row.duration ? parseDur(row.duration) : null;
+  durOverride = d && Math.abs(d - cur.duration) > 1e-3 ? d : null; $('#dur').value = durOverride ? fmtSec(durOverride) : ''; store.set('dur:' + cur.path, durOverride);
+  updateDurHint(); updateScrub(); buildControls(); requestFrame(); renderBatch();
+  if (row.filename) $('#fname').value = row.filename;
+  toast(L('Zeile {0} in der Vorschau – Fenster schließen, um sie anzusehen.', i + 1));
+}
+async function importCsv(text) {
+  if (!text) return;
+  try {
+    const r = await (await api('/api/batch/parse', { path: cur.path, csv: text })).json();
+    if (r.errors.length) { toast(r.errors.slice(0, 3).join(' · ')); return; }
+    batchRows = r.rows.map(x => ({ values: x.values, filename: x.filename || '', duration: x.duration || '' }));
+    batchActive = -1; renderBatch();
+    toast(L('{0} Zeilen importiert', batchRows.length) + (r.unknown.length ? L(' – ignoriert: {0}', r.unknown.join(', ')) : ''));
+  } catch (e) { toast(L('Import fehlgeschlagen: {0}', e.message)); }
+}
+$('#batchBtn').onclick = () => {
+  if (!cur) return;
+  batchRows = store.get('batch:' + cur.path, []);
+  if (!batchRows.length) batchRows = [rowFromCurrent()];
+  batchActive = -1; $('#batchTitle').textContent = L('Stapel-Rendering – {0}', cur.name);
+  renderBatch(); $('#batchModal').hidden = false;
+};
+$('#bClose').onclick = () => { $('#batchModal').hidden = true; };
+$('#batchModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#batchModal').hidden = true; });
+$('#bAdd').onclick = () => { batchRows.push(rowFromCurrent()); renderBatch(); };
+$('#bImport').onclick = async () => {
+  if (desk() && desk().pick_csv) {
+    try { importCsv(await desk().pick_csv()); } catch (e) { toast(L('Dateiauswahl fehlgeschlagen: {0}', e.message || e)); }
+  } else $('#csvFile').click();
+};
+$('#csvFile').onchange = async () => { const f = $('#csvFile').files[0]; if (f) importCsv(await f.text()); $('#csvFile').value = ''; };
+$('#bTemplate').onclick = async () => {
+  const cv = {}; for (const c of batchControls()) if (values[vkey(c)] !== undefined) cv[c.id] = values[vkey(c)];
+  const r = await (await api('/api/batch/template', { path: cur.path, values: cv })).json();
+  if (desk() && desk().save_text) {
+    try { const p = await desk().save_text(r.filename, r.csv); if (p) toast(L('Gespeichert: {0}', p)); }
+    catch (e) { toast(L('Speichern fehlgeschlagen: {0}', e.message || e)); }
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv' })); a.download = r.filename; a.click();
+};
+$('#bRender').onclick = async () => {
+  if (!batchRows.length) return;
+  const rows = batchRows.map(r => ({ values: r.values, filename: r.filename || null, duration: r.duration ? parseDur(r.duration) : null }));
+  try {
+    const r = await (await api('/api/batch/render', { path: cur.path, rows, format: $('#fmt').value, output_dir: $('#outdir').value, motion: motionPayload() })).json();
+    r.ids.forEach((id, k) => jobs.set(id, { id, name: rows[k].filename || L('Zeile {0}', k + 1), status: 'queued', done: 0, total: 0 }));
+    $('#batchModal').hidden = true; drawQueue(); poll();
+    toast(L('{0} Renderings in der Warteschlange', r.ids.length));
+  } catch (e) { toast(L('Stapel fehlgeschlagen: {0}', e.message)); }
+};
+
+const bg = store.get('bg', 'checker'); document.querySelector(`[data-bg="${bg}"]`)?.click();
+loadLibrary().then(async () => {
+  const q = new URLSearchParams(location.search).get('open');
+  if (q) { await api('/api/config', { add_files: [q] }); await loadLibrary(); history.replaceState(null, '', '/'); openTemplate(q); return; }
+  const last = store.get('last', null); if (last && lib.some(i => i.path === last)) openTemplate(last);
+});
+const _open = openTemplate; openTemplate = (p) => { store.set('last', p); return _open(p); };
+</script>
+</body>
+</html>

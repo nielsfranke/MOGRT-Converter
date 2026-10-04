@@ -1,0 +1,15 @@
+.venv/
+work/
+out/
+__pycache__/
+*.pyc
+.DS_Store
+.cache/
+build/
+dist/
+packaging/icons/icon.iconset/
+packaging/icons/
+testdata/
+samples/
+.claude/
+.pytest_cache/

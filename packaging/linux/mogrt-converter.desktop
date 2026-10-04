@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MOGRT Converter
+Comment=After-Effects-MOGRTs ohne Adobe rendern
+Exec=mogrt-converter %f
+Icon=mogrt-converter
+Terminal=false
+Categories=AudioVideo;Video;
+MimeType=application/x-mogrt;

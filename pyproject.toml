@@ -1,0 +1,35 @@
+[project]
+name = "mogrt-converter"
+version = "0.6.0"
+description = "Render After Effects MOGRT templates without Adobe software"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "THIRD-PARTY-NOTICES.md"]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "py-aep>=0.17",
+    "skia-python>=144.0",
+    "quickjs>=1.19",
+    "numpy>=2.0",
+    "pillow>=10",
+    "fonttools>=4.38",
+    "uharfbuzz>=0.39",
+    "pypdfium2>=4.0",
+    "esprima>=4.0",
+    "imageio-ffmpeg>=0.5",
+    "pywebview>=5.0",
+]
+
+[project.scripts]
+mogrt = "mogrt_converter.cli:main"
+
+[project.gui-scripts]
+mogrt-converter = "mogrt_converter.desktop:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.0"]
+dev = ["pytest>=7"]
