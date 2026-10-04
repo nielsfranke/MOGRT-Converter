@@ -50,10 +50,10 @@ ffmpeg and Ghostscript (for EPS logos in templates) are bundled, nothing else ne
 
 ### Windows and Linux
 
-The packages have to be built on the respective system ([Building](#building)):
+Download from the [latest release](https://github.com/nielsfranke/MOGRT-Converter/releases/latest) (x64, built by GitHub Actions, less tested than the Mac version):
 
-- **Windows:** ZIP or installer. Needs the WebView2 runtime, which is usually preinstalled on Windows 10/11.
-- **Linux:** unpack the `.tar.gz` and run `./install.sh`. For the native window install `sudo apt install gir1.2-webkit2-4.1`; without it the interface opens in the browser.
+- **Windows:** `…-Setup.exe` (installer) or `…-Windows-x64.zip` (portable). Needs the WebView2 runtime, which is usually preinstalled on Windows 10/11.
+- **Linux:** unpack the `…-Linux-x64.tar.gz` and run `./install.sh`. For the native window install `sudo apt install gir1.2-webkit2-4.1`; without it the interface opens in the browser.
 
 ## Usage
 

@@ -50,10 +50,10 @@ ffmpeg und Ghostscript (für EPS-Logos in Vorlagen) sind in der App enthalten, e
 
 ### Windows und Linux
 
-Die Pakete werden auf dem jeweiligen System gebaut ([Selbst bauen](#selbst-bauen)):
+Download im [neuesten Release](https://github.com/nielsfranke/MOGRT-Converter/releases/latest) (x64, gebaut von GitHub Actions, weniger getestet als die Mac-Version):
 
-- **Windows:** ZIP bzw. Installer. Braucht die WebView2-Runtime, die bei Windows 10/11 meist vorinstalliert ist.
-- **Linux:** `.tar.gz` entpacken, `./install.sh` ausführen. Für das native Fenster `sudo apt install gir1.2-webkit2-4.1`, ohne öffnet sich die Oberfläche im Browser.
+- **Windows:** `…-Setup.exe` (Installer) oder `…-Windows-x64.zip` (ohne Installation). Braucht die WebView2-Runtime, die bei Windows 10/11 meist vorinstalliert ist.
+- **Linux:** `…-Linux-x64.tar.gz` entpacken, `./install.sh` ausführen. Für das native Fenster `sudo apt install gir1.2-webkit2-4.1`, ohne öffnet sich die Oberfläche im Browser.
 
 ## Benutzung
 
