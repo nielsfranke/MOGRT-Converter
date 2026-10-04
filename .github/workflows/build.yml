@@ -1,7 +1,11 @@
-# Builds the desktop app for macOS, Windows and Linux (run manually: Actions → build → Run workflow).
+# Builds the desktop app for macOS, Windows and Linux.
+# A pushed tag v* also publishes the builds in the GitHub release of that tag (created if missing).
+# Manual runs (Actions → build → Run workflow) only keep the builds as workflow artifacts.
 name: build
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 jobs:
@@ -52,3 +56,25 @@ jobs:
           path: |
             dist/*.zip
             dist/*-Setup.exe
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Upload to the release
+        run: |
+          ls -l dist
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "MOGRT Converter ${TAG#v}" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber

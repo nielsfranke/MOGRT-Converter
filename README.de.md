@@ -143,7 +143,13 @@ docker run --rm -v "$PWD":/src -w /src python:3.12-bookworm sh packaging/linux/b
 
 Der Build kompiliert dabei ein schlankes Ghostscript aus den offiziellen Quellen (`packaging/ghostscript/build_gs.sh`, unter Windows wird ein installiertes offizielles Ghostscript übernommen). Mitgelieferte Fremdsoftware und Lizenzen: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-PyInstaller baut nur für das System, auf dem es läuft. Der Workflow `.github/workflows/build.yml` baut alle drei Plattformen (manuell über *Actions → build → Run workflow*).
+PyInstaller baut nur für das System, auf dem es läuft. Der Workflow `.github/workflows/build.yml` baut alle drei Plattformen auf GitHub Actions. Manuell gestartet (*Actions → build → Run workflow*) landen die Pakete als Workflow-Artefakte.
+
+### Release veröffentlichen
+
+1. Version in `pyproject.toml`, `mogrt_converter/__init__.py` und den Download-Dateinamen in beiden READMEs anheben, committen.
+2. Tag pushen: `git tag -a v0.7.0 -m "MOGRT Converter 0.7.0" && git push origin v0.7.0`
+3. Der Build-Workflow baut macOS, Windows und Linux und hängt die Dateien an das GitHub-Release zu diesem Tag. Gibt es noch kein Release, legt er eines mit automatisch erzeugten Notizen an. Die Notizen kannst du vorher oder hinterher schreiben; gleichnamige Dateien werden ersetzt.
 
 ## Lizenz
 
