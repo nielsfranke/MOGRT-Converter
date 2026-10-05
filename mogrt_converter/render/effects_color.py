@@ -7,12 +7,12 @@ import math
 import numpy as np
 import skia
 
-from .effects_extra import _arr, _img, _surface, effect  # noqa: F401
+from .effects_extra import _arr, _fraction, _img, _surface, effect  # noqa: F401
 
 
 def _blend(orig: np.ndarray, out: np.ndarray, blend_pct: float) -> np.ndarray:
-    """'Blend With Original' in percent."""
-    b = max(0.0, min(1.0, float(blend_pct or 0) / 100.0))
+    """'Blend With Original' (a fraction or percent, see _fraction)."""
+    b = _fraction(blend_pct)
     return out if b <= 0 else out * (1 - b) + orig * b
 
 
@@ -279,7 +279,7 @@ def find_edges(ctx, p, img):
     gy = (pad[2:, 1:-1] - pad[:-2, 1:-1]) * 2 + (pad[2:, :-2] - pad[:-2, :-2]) + (pad[2:, 2:] - pad[:-2, 2:])
     edge = np.clip(np.hypot(gx, gy) / 2, 0, 1)
     res = edge if int(p.get("0001", 0) or 0) else 1 - edge
-    blend = float(p.get("0002", 0)) / 100
+    blend = _fraction(p.get("0002", 0))
     a[..., :3] = res * (1 - blend) + a[..., :3] * blend
     return _img(a)
 
@@ -296,7 +296,7 @@ def cc_threshold(ctx, p, img):
     on = (src >= float(p.get("0001", 0.5))).astype(np.float32)
     if int(p.get("0003", 0) or 0):
         on = 1 - on
-    blend = float(p.get("0004", 0)) / 100
+    blend = _fraction(p.get("0004", 0))
     a[..., :3] = on[..., None] * (1 - blend) + a[..., :3] * blend
     return _img(a)
 

@@ -79,6 +79,10 @@ LUMA_TO_ALPHA = skia.ColorFilters.Matrix([
 # --------------------------------------------------------------------------- matrices
 
 
+# effects on adjustment layers that move pixels and so need the layers below beyond the comp frame
+_GROWS_INPUT = {"ADBE Geometry2", "ADBE Corner Pin"}
+
+
 def _T(x, y, z=0.0):
     m = np.eye(4)
     m[:3, 3] = [x, y, z]
@@ -513,8 +517,10 @@ class Renderer:
         return True
 
     def draw_layers(self, canvas: skia.Canvas, comp: Any, t: float, scale: float,
-                    collapse: tuple[np.ndarray, float, Camera | None, bool] | None = None) -> None:
-        """Draw all layers of comp (bottom to top) onto canvas (comp space)."""
+                    collapse: tuple[np.ndarray, float, Camera | None, bool] | None = None,
+                    until: Any = None) -> None:
+        """Draw all layers of comp (bottom to top) onto canvas (comp space); with `until`, only the
+        layers below that one."""
         layers = list(comp.layers)
         if collapse is not None:
             base, base_op, camera, base3d = collapse
@@ -534,6 +540,8 @@ class Renderer:
             run.clear()
 
         for layer in order:
+            if layer is until:
+                break
             if not layer.enabled or not self.is_visual(layer):
                 continue
             if not (layer.in_point <= t < layer.out_point):
@@ -575,11 +583,24 @@ class Renderer:
             bounds, res = skia.Rect.MakeWH(comp.width, comp.height), scale
         else:  # collapsed precomp: the surface belongs to the containing comp
             bounds, res = skia.Rect.MakeWH(before.width() / sx, before.height() / sx), sx
-        ctx = fx.EffectContext(self, layer, t, bounds, res)
-        img = before
         effects = [e for e in (self._prop(layer, "ADBE Effect Parade") or []) if getattr(e, "enabled", True) and not fx.is_control(e)]
+        # geometric effects pull in what lies below beyond the comp frame (AE renders that area for them)
+        grow = 0.0
+        if base is None and total.isScaleTranslate() and abs(total.getTranslateX()) < 1e-6 and abs(total.getTranslateY()) < 1e-6:
+            grow = min(sum(fx.padding(self, e, t) for e in effects if e.match_name in _GROWS_INPUT), 2000.0)
+        if grow > 0.5:
+            bounds = skia.Rect.MakeLTRB(-grow, -grow, comp.width + grow, comp.height + grow)
+            img = self._render_below(comp, layer, t, res, grow)
+        else:
+            img = before
+        ctx = fx.EffectContext(self, layer, t, bounds, res)
         for e in effects:
             img = fx.apply(ctx, e, img)
+        if grow > 0.5:
+            crop = skia.Surface.MakeRasterN32Premul(before.width(), before.height())
+            crop.getCanvas().clear(skia.ColorTRANSPARENT)
+            crop.getCanvas().drawImage(img, -grow * res, -grow * res)
+            img = crop.makeImageSnapshot()
         opacity = self._val(layer.transform, t, "ADBE Opacity", default=100.0) / 100.0 * op_mult
         src = getattr(layer, "source", None)
         solid = type(getattr(src, "main_source", None)).__name__ == "SolidSource"
@@ -621,6 +642,22 @@ class Renderer:
         else:
             canvas.drawImage(img, 0, 0)
         canvas.restore()
+
+    def _render_below(self, comp: Any, layer: Any, t: float, scale: float, grow: float) -> skia.Image:
+        """The layers below `layer`, rendered with `grow` comp units of extra room on every side."""
+        w = max(1, int(round((comp.width + 2 * grow) * scale)))
+        h = max(1, int(round((comp.height + 2 * grow) * scale)))
+        surf = skia.Surface.MakeRasterN32Premul(w, h)
+        c = surf.getCanvas()
+        c.clear(skia.ColorTRANSPARENT)
+        c.scale(scale, scale)
+        c.translate(grow, grow)
+        self._surfaces.append(surf)
+        try:
+            self.draw_layers(c, comp, t, scale, until=layer)
+        finally:
+            self._surfaces.pop()
+        return surf.makeImageSnapshot()
 
     def _canvas_matrix(self, m: np.ndarray, camera: Camera | None, is3d: bool) -> skia.Matrix | None:
         if is3d and camera is not None:
@@ -731,11 +768,15 @@ class Renderer:
         src = getattr(layer, "source", None)
         collapsed = getattr(layer, "collapse_transformation", False) and type(src).__name__ == "CompItem"
         if collapsed:
-            # a collapsed precomp is not cropped to its comp frame
-            bounds = self._collapsed_bounds(src, self.source_time(layer, t), bounds)
-        pad = sum(fx.padding(self, e, t) for e in effects) + fx.style_padding(self, layer, t)
-        # effects may grow the layer beyond its bounds (shadows, glows, tiling) like in AE
-        pad = min(pad, 4000.0)
+            # like AE, effects on a collapsed precomp work on the area its layers cover (not its frame)
+            bounds = self.collapsed_bounds(layer, t)
+            if bounds.isEmpty():
+                return None, (0, 0), 1.0
+        # effects may grow the layer beyond its bounds (shadows, glows, tiling) like in AE; layer
+        # styles come after the effects and need room of their own
+        fx_pad = min(sum(fx.padding(self, e, t) for e in effects), 4000.0)
+        style_pad = min(fx.style_padding(self, layer, t), 4000.0)
+        pad = fx_pad + style_pad
         bounds = skia.Rect.MakeLTRB(bounds.left() - pad, bounds.top() - pad, bounds.right() + pad, bounds.bottom() + pad)
         if bounds.isEmpty() or bounds.width() <= 0 or bounds.height() <= 0:
             return None, (0, 0), 1.0
@@ -764,26 +805,43 @@ class Renderer:
         ctx = fx.EffectContext(self, layer, t, bounds, res, original=img)
         for e in effects:
             img = fx.apply(ctx, e, img)
+        if effects and style_pad > 0:
+            # effects only have their own area (layer + their growth), not the room for the styles
+            inner = skia.Surface.MakeRasterN32Premul(img.width(), img.height())
+            ic = inner.getCanvas()
+            ic.clear(skia.ColorTRANSPARENT)
+            k = style_pad * res
+            ic.clipRect(skia.Rect.MakeLTRB(k, k, img.width() - k, img.height() - k))
+            ic.drawImage(img, 0, 0)
+            img = inner.makeImageSnapshot()
         if fx.active_styles(layer):
             img = fx.apply_styles(ctx, img)
         return img, (bounds.left(), bounds.top()), res
 
-    def _collapsed_bounds(self, comp: Any, t: float, frame: skia.Rect) -> skia.Rect:
-        """The comp frame plus whatever its (2D) layers draw outside it, limited to a few frame sizes."""
-        out = skia.Rect.MakeLTRB(frame.left(), frame.top(), frame.right(), frame.bottom())
-        for sub in comp.layers:
-            if not sub.enabled or not self.is_visual(sub) or not (sub.in_point <= t < sub.out_point):
-                continue
-            lb = self.layer_content_bounds(sub, t)
-            if lb.isEmpty():
-                continue
-            m = self.world_matrix(sub, t)
-            pts = [m @ np.array([x, y, 0.0, 1.0]) for x in (lb.left(), lb.right()) for y in (lb.top(), lb.bottom())]
-            out.join(skia.Rect.MakeLTRB(min(p[0] for p in pts), min(p[1] for p in pts),
-                                        max(p[0] for p in pts), max(p[1] for p in pts)))
+    def collapsed_bounds(self, layer: Any, t: float) -> skia.Rect:
+        """What the layers of a collapsed precomp actually draw, in its coordinates (within two frame
+        sizes around it). Measured from a small render, because
+        geometric bounds of text with animators are too rough for effects that fill the layer.
+        Empty if they draw nothing (then, like in AE, the layer and its effects show nothing)."""
+        comp, frame = layer.source, self.layer_content_bounds(layer, t)
         w, h = frame.width(), frame.height()
-        out.intersect(skia.Rect.MakeLTRB(frame.left() - 2 * w, frame.top() - 2 * h, frame.right() + 2 * w, frame.bottom() + 2 * h))
-        return out
+        lim = skia.Rect.MakeLTRB(frame.left() - 2 * w, frame.top() - 2 * h, frame.right() + 2 * w, frame.bottom() + 2 * h)
+        k = 1024.0 / max(lim.width(), lim.height(), 1.0)
+        surf = skia.Surface.MakeRasterN32Premul(max(1, int(math.ceil(lim.width() * k))), max(1, int(math.ceil(lim.height() * k))))
+        c = surf.getCanvas()
+        c.clear(skia.ColorTRANSPARENT)
+        c.scale(k, k)
+        c.translate(-lim.left(), -lim.top())
+        self._surfaces.append(surf)
+        try:
+            self.draw_layers(c, comp, self.source_time(layer, t), k)
+        finally:
+            self._surfaces.pop()
+        ys, xs = np.nonzero(surf.makeImageSnapshot().toarray()[..., 3])
+        if len(xs) == 0:
+            return skia.Rect.MakeEmpty()
+        return skia.Rect.MakeLTRB(lim.left() + xs.min() / k, lim.top() + ys.min() / k,
+                                  lim.left() + (xs.max() + 1) / k, lim.top() + (ys.max() + 1) / k)
 
     def _apply_masks(self, c: skia.Canvas, layer: Any, t: float, bounds: skia.Rect) -> None:
         parade = self._prop(layer, "ADBE Mask Parade")

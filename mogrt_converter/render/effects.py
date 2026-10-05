@@ -117,6 +117,9 @@ def effect_rect(r: Any, layer: Any, t: float) -> skia.Rect:
     if _is_vector_layer(layer):
         comp = r.ev._comp_of_layer.get(id(layer), r.mogrt.main_comp)
         return skia.Rect.MakeXYWH(-comp.width / 2, -comp.height / 2, comp.width, comp.height)
+    if getattr(layer, "collapse_transformation", False) and type(getattr(layer, "source", None)).__name__ == "CompItem":
+        cb = r.collapsed_bounds(layer, t)
+        return cb if not cb.isEmpty() else r.layer_content_bounds(layer, t)
     return r.layer_content_bounds(layer, t)
 
 

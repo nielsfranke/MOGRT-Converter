@@ -8,7 +8,7 @@ import struct
 import numpy as np
 import skia
 
-from .effects_extra import _arr, _blur_dims, _fractal, _img, _sample, _surface, effect  # noqa: F401
+from .effects_extra import _arr, _blur_dims, _fraction, _fractal, _img, _sample, _surface, effect  # noqa: F401
 
 
 def _pre(img: skia.Image) -> np.ndarray:
@@ -114,7 +114,7 @@ def offset(ctx, p, img):
     r = ctx.layer_rect()
     to = _pt(p.get("0001"), [r.centerX(), r.centerY()])
     sx, sy = to[0] - r.centerX(), to[1] - r.centerY()
-    blend = float(p.get("0002", 0)) / 100.0
+    blend = _fraction(p.get("0002", 0))
     if (abs(sx) < 1e-3 and abs(sy) < 1e-3) or blend >= 1:
         return img
     lx, ly = _grid(ctx, img)
@@ -547,7 +547,7 @@ def cc_tiler(ctx, p, img):
     u = np.mod(lx - c[0] + w / 2, w) / s + r.left()
     v = np.mod(ly - c[1] + h / 2, h) / s + r.top()
     out = _lookup(ctx, _pre(img), u, v)
-    blend = float(p.get("0003", 0)) / 100
+    blend = _fraction(p.get("0003", 0))
     return _from_pre(out * (1 - blend) + _pre(img) * blend if blend else out)
 
 

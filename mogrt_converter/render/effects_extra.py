@@ -39,6 +39,13 @@ def _blur_dims(img: skia.Image, sigma: float, dims: int) -> skia.Image:
     return s.makeImageSnapshot()
 
 
+def _fraction(v) -> float:
+    """A percent control as 0..1. Some effects store percent as a fraction (1.0 = 100 %), others as
+    0..100; values up to 1 are taken as a fraction (an actual 0.5 % is visually the same as 0)."""
+    v = float(v or 0)
+    return max(0.0, min(1.0, v if abs(v) <= 1 else v / 100.0))
+
+
 def _to_px(ctx, pt) -> tuple[float, float]:
     b = ctx.bounds
     return ((pt[0] - b.left()) * ctx.res, (pt[1] - b.top()) * ctx.res)
@@ -175,7 +182,7 @@ def simple_choker(ctx, p, img):
 def invert(ctx, p, img):
     a = _arr(img)
     ch = int(p.get("Channel", 1))
-    blend = float(p.get("Blend With Original", 0)) / 100.0
+    blend = _fraction(p.get("Blend With Original", 0))
     out = a.copy()
     if ch in (1, 2, 3, 4, 5, 6, 7, 8, 9):  # RGB-ish variants -> invert colours
         out[..., :3] = 1 - a[..., :3]
@@ -258,18 +265,31 @@ def mosaic(ctx, p, img):
 
 @effect("CC Composite")
 def cc_composite(ctx, p, img):
+    # Composite Original: 1 Copy, 2 Behind, 3 In Front, then the AE transfer modes;
+    # RGB Only keeps the alpha of the effects result
     original = getattr(ctx, "original", None)
     if original is None:
         return img
     op = float(p.get("Opacity", 100)) / 100.0
-    mode = int(p.get("Composite Original", 1))
+    mode = int(p.get("Composite Original", 3))
+    if mode == 1:
+        return original
+    blend = {2: skia.BlendMode.kDstOver, 3: skia.BlendMode.kSrcOver, 4: skia.BlendMode.kPlus, 5: skia.BlendMode.kMultiply,
+             6: skia.BlendMode.kScreen, 7: skia.BlendMode.kOverlay, 8: skia.BlendMode.kSoftLight,
+             9: skia.BlendMode.kHardLight, 10: skia.BlendMode.kColorDodge, 11: skia.BlendMode.kColorBurn,
+             12: skia.BlendMode.kDarken, 13: skia.BlendMode.kLighten, 14: skia.BlendMode.kDifference,
+             15: skia.BlendMode.kExclusion, 16: skia.BlendMode.kHue, 17: skia.BlendMode.kSaturation,
+             18: skia.BlendMode.kColor, 19: skia.BlendMode.kLuminosity}.get(mode, skia.BlendMode.kSrcOver)
     s = _surface(img)
     c = s.getCanvas()
     c.drawImage(img, 0, 0)
-    blend = {1: skia.BlendMode.kSrcOver, 2: skia.BlendMode.kDstOver, 3: skia.BlendMode.kDstIn, 4: skia.BlendMode.kDstOut,
-             5: skia.BlendMode.kPlus, 6: skia.BlendMode.kMultiply, 7: skia.BlendMode.kScreen}.get(mode, skia.BlendMode.kSrcOver)
     c.drawImage(original, 0, 0, skia.SamplingOptions(), skia.Paint(Alphaf=op, BlendMode=blend))
-    return s.makeImageSnapshot()
+    out = s.makeImageSnapshot()
+    if not int(p.get("RGB Only", 0) or 0):
+        return out
+    a = _arr(out)
+    a[..., 3] = _arr(img)[..., 3]
+    return _img(a)
 
 
 # --------------------------------------------------------------------------- transitions
@@ -333,7 +353,7 @@ def _repetile_pad(p):
 def cc_repetile(ctx, p, img):
     """Repeat the layer's own (source) rect into the expanded area."""
     r = ctx.renderer
-    src = r.layer_content_bounds(ctx.layer, ctx.t)
+    src = ctx.layer_rect()
     if src.isEmpty():
         return img
     x0, y0 = _to_px(ctx, (src.left(), src.top()))
@@ -356,7 +376,7 @@ def cc_repetile(ctx, p, img):
 @effect("ADBE Tile")
 def motion_tile(ctx, p, img):
     r = ctx.renderer
-    src = r.layer_content_bounds(ctx.layer, ctx.t)
+    src = ctx.layer_rect()
     cx, cy = _to_px(ctx, p.get("Tile Center", [src.centerX(), src.centerY()]))
     tw = float(p.get("Tile Width", 100)) / 100
     th = float(p.get("Tile Height", 100)) / 100
@@ -387,17 +407,18 @@ def motion_tile(ctx, p, img):
 def beam(ctx, p, img):
     a = p.get("Starting Point", [0, 0])
     b = p.get("Ending Point", [100, 100])
-    length = float(p.get("Length", 25)) / 100
-    tm = float(p.get("Time", 0)) / 100
+    # Length, Time and Softness are stored as fractions (1.0 = 100 %)
+    length = float(p.get("Length", 0.25))
+    tm = float(p.get("Time", 0))
     t0 = float(p.get("Starting Thickness", 8)) * ctx.res
     t1 = float(p.get("Ending Thickness", 8)) * ctx.res
-    soft = float(p.get("Softness", 60)) / 100
+    soft = float(p.get("Softness", 0.6))
     inside = p.get("Inside Color", [1, 1, 1, 1])
     outside = p.get("Outside Color", [0.6, 0.4, 1, 1])
     on_original = bool(p.get("Composite On Original", 0))
-    head = tm * (1 + length)
-    tail = head - length
-    s0, s1 = max(0.0, tail), min(1.0, head)
+    # the beam starts as [0, length] and travels until its head reaches the end point
+    tail = tm * (1 - length)
+    s0, s1 = max(0.0, tail), min(1.0, tail + length)
     s = _surface(img)
     c = s.getCanvas()
     if on_original:
@@ -445,12 +466,12 @@ def four_color_gradient(ctx, p, img):
     def lst(v, d):
         return v if isinstance(v, (list, tuple)) else d
 
-    # 0001 Point 1, 0002 Color 1, … 0008 Color 4, 0009 Blend, 0010 Jitter, 0011 Opacity
+    # 0001 Point 1, 0002 Color 1, … 0008 Color 4, 0009 Blend, 0010 Jitter, 0013 Opacity (%)
+    # (0011 is the "Positions & Colors" group header)
     pts = [_to_px(ctx, lst(p.get(f"{2 * i - 1:04d}"), [0, 0])) for i in range(1, 5)]
     cols = [np.array(lst(p.get(f"{2 * i:04d}"), [1, 1, 1, 1])[:3], np.float32) for i in range(1, 5)]
     blend = max(1.0, float(p.get("0009", 100) or 100))
-    opv = p.get("0011", 1.0)
-    op = float(opv) if isinstance(opv, (int, float)) and opv <= 1 else (float(opv) / 100 if isinstance(opv, (int, float)) else 1.0)
+    op = float(p.get("0013", 100)) / 100
     h, w = img.height(), img.width()
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     weights = []
@@ -571,7 +592,7 @@ def turbulent_displace(ctx, p, img):
 
     # pinning: no displacement at the layer's edges / corners
     if pinning != 1:
-        lb = ctx.renderer.layer_content_bounds(ctx.layer, ctx.t)
+        lb = ctx.layer_rect()
         if lb.width() > 0 and lb.height() > 0:
             ramp_x = min(size, lb.width() / 2)
             ramp_y = min(size, lb.height() / 2)
