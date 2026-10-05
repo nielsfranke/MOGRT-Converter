@@ -645,18 +645,29 @@ class Renderer:
         parade = self._prop(layer, "ADBE Mask Parade")
         mask_surf_path = None
         coverage = None
+        opacities = []
         for mk in parade:
             if not getattr(mk, "enabled", True):
                 continue
             shape = self._val(mk, t, "ADBE Mask Shape")
             if shape is None:
                 continue
-            p = skia.Path()
-            add_contour(p, contour_from_shape(shape))
-            inverted = bool(getattr(mk, "inverted", False))
-            if inverted:
-                p.toggleInverseFillType()
             op = getattr(getattr(mk, "mask_mode", None), "name", "ADD")
+            p = skia.Path()
+            mop = self._val(mk, t, "ADBE Mask Opacity", default=100.0)
+            if mop <= 0:
+                # a mask at 0 % adds, subtracts or flips nothing (auto-traced masks are switched
+                # on and off this way); intersecting with it leaves nothing
+                if op not in ("INTERSECT", "DARKEN"):
+                    if coverage is None and op == "SUBTRACT":
+                        coverage = skia.Path()
+                        coverage.addRect(bounds)
+                    continue
+            else:
+                opacities.append(mop)
+                add_contour(p, contour_from_shape(shape))
+                if bool(getattr(mk, "inverted", False)):
+                    p.toggleInverseFillType()
             if coverage is None:
                 if op in ("SUBTRACT",):
                     full = skia.Path()
@@ -681,7 +692,6 @@ class Renderer:
         if coverage is None:
             coverage = skia.Path()  # all masks empty -> nothing visible
         paint = skia.Paint(AntiAlias=True)
-        opacities = [self._val(mk, t, "ADBE Mask Opacity", default=100.0) for mk in parade if getattr(mk, "enabled", True)]
         if opacities:
             paint.setAlphaf(max(0.0, min(1.0, max(opacities) / 100.0)))
         feather = 0.0
