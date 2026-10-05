@@ -455,3 +455,138 @@ def four_color_gradient(ctx, p, img):
     a = _arr(img)
     a[..., :3] = a[..., :3] * (1 - op) + rgb * op
     return _img(a)
+
+
+# --------------------------------------------------------------------------- distort
+
+def _hash3(ix: np.ndarray, iy: np.ndarray, iz: np.ndarray, seed: int) -> np.ndarray:
+    """Lattice values in [-1, 1] (deterministic per seed)."""
+    n = (ix * 374761393 + iy * 668265263 + iz * 2147483647 + seed * 1274126177) & 0xFFFFFFFF
+    n = ((n ^ (n >> 13)) * 1274126177) & 0xFFFFFFFF
+    n = n ^ (n >> 16)
+    return (n & 0xFFFF).astype(np.float32) / 32767.5 - 1.0
+
+
+def _vnoise3(x: np.ndarray, y: np.ndarray, z: float, seed: int) -> np.ndarray:
+    """Smooth 3D value noise in [-1, 1]; z animates it (one unit per evolution revolution)."""
+    x0, y0, z0 = np.floor(x), np.floor(y), math.floor(z)
+    fx, fy, fz = x - x0, y - y0, z - z0
+    ux, uy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+    uz = fz * fz * (3 - 2 * fz)
+    ix, iy = x0.astype(np.int64), y0.astype(np.int64)
+    out = 0.0
+    for dz, wz in ((0, 1 - uz), (1, uz)):
+        iz = np.int64(z0 + dz)
+        a = _hash3(ix, iy, iz, seed) * (1 - ux) + _hash3(ix + 1, iy, iz, seed) * ux
+        b = _hash3(ix, iy + 1, iz, seed) * (1 - ux) + _hash3(ix + 1, iy + 1, iz, seed) * ux
+        out = out + (a * (1 - uy) + b * uy) * wz
+    return out
+
+
+def _fractal(x: np.ndarray, y: np.ndarray, z: float, seed: int, complexity: float) -> np.ndarray:
+    octaves = max(1.0, complexity)
+    total, amp, norm, f = 0.0, 1.0, 0.0, 1.0
+    for o in range(int(math.ceil(octaves))):
+        w = min(1.0, octaves - o)  # fractional complexity fades the last octave in
+        total = total + _vnoise3(x * f + o * 17.3, y * f + o * 31.7, z * f, seed + o * 101) * amp * w
+        norm += amp * w
+        amp *= 0.5
+        f *= 2.0
+    return total / max(norm, 1e-6)
+
+
+def _sample(a: np.ndarray, sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
+    """Bilinear lookup of a premultiplied RGBA array at pixel coordinates (transparent outside)."""
+    h, w = a.shape[:2]
+    pad = np.zeros((h + 2, w + 2, 4), np.float32)
+    pad[1:-1, 1:-1] = a
+    x = np.clip(sx + 1, 0, w + 0.999)
+    y = np.clip(sy + 1, 0, h + 0.999)
+    x0, y0 = np.floor(x).astype(np.int32), np.floor(y).astype(np.int32)
+    x1, y1 = np.minimum(x0 + 1, w + 1), np.minimum(y0 + 1, h + 1)
+    fx, fy = (x - x0)[..., None], (y - y0)[..., None]
+    top = pad[y0, x0] * (1 - fx) + pad[y0, x1] * fx
+    bot = pad[y1, x0] * (1 - fx) + pad[y1, x1] * fx
+    return top * (1 - fy) + bot * fy
+
+
+@effect("ADBE Turbulent Displace", pad=lambda p: abs(float(p.get("0002", 50))) * max(1.0, float(p.get("0003", 100))) / 100 + 2)
+def turbulent_displace(ctx, p, img):
+    # 0001 Displacement, 0002 Amount, 0003 Size, 0004 Offset, 0005 Complexity, 0006 Evolution,
+    # 0008 Cycle Evolution, 0009 Cycle, 0011 Random Seed, 0012 Pinning
+    kind = int(p.get("0001", 1) or 1)
+    amount = float(p.get("0002", 50))
+    size = max(1.0, float(p.get("0003", 100)))
+    if abs(amount) < 0.01:
+        return img
+    off = p.get("0004", [0, 0])
+    off = list(off) if isinstance(off, (list, tuple)) else [0, 0]
+    if max(abs(off[0]), abs(off[1])) > 20000:  # stored at 100x in some projects
+        off = [off[0] / 100, off[1] / 100]
+    complexity = float(p.get("0005", 1) or 1)
+    evo = float(p.get("0006", 0)) / 360.0
+    if int(p.get("0008", 0) or 0):
+        evo %= max(1.0, float(p.get("0009", 1) or 1))
+    seed = int(p.get("0011", 0) or 0)
+    pinning = int(p.get("0012", 3) or 3)
+    if kind in (4, 5, 6):  # "smoother" variants: less fine detail
+        complexity = max(1.0, complexity * 0.5)
+
+    h, w = img.height(), img.width()
+    res, b = ctx.res, ctx.bounds
+    # displacement field on a coarse grid (the noise is smooth at the scale of Size), then upsampled
+    step = max(1, int(size * res / 6))
+    gw, gh = w // step + 2, h // step + 2
+    gy, gx = np.mgrid[0:gh, 0:gw].astype(np.float32)
+    lx = b.left() + gx * step / res  # layer coordinates
+    ly = b.top() + gy * step / res
+    u, v = (lx - off[0]) / size, (ly - off[1]) / size
+    if kind in (2, 3, 5, 6):  # bulge / twist follow the gradient of a single noise field
+        e = 0.05
+        n0 = _fractal(u, v, evo, seed, complexity)
+        du = (_fractal(u + e, v, evo, seed, complexity) - n0) / e
+        dv = (_fractal(u, v + e, evo, seed, complexity) - n0) / e
+        dx, dy = (du, dv) if kind in (2, 5) else (-dv, du)
+        dx, dy = dx * 0.25, dy * 0.25
+    else:
+        dx = _fractal(u, v, evo, seed, complexity)
+        dy = _fractal(u + 57.1, v + 23.9, evo, seed + 7, complexity)
+        if kind == 7:
+            dx = dx * 0
+        elif kind == 8:
+            dy = dy * 0
+        elif kind == 9:
+            dy = dx
+    # layer units: the displacement grows with Size (Amount 15 / Size 10 only roughens edges)
+    dx, dy = dx * amount * size / 100, dy * amount * size / 100
+
+    # pinning: no displacement at the layer's edges / corners
+    if pinning != 1:
+        lb = ctx.renderer.layer_content_bounds(ctx.layer, ctx.t)
+        if lb.width() > 0 and lb.height() > 0:
+            ramp_x = min(size, lb.width() / 2)
+            ramp_y = min(size, lb.height() / 2)
+            wx = np.clip(np.minimum(lx - lb.left(), lb.right() - lx) / ramp_x, 0, 1)
+            wy = np.clip(np.minimum(ly - lb.top(), lb.bottom() - ly) / ramp_y, 0, 1)
+            if pinning == 2:
+                wgt = np.maximum(wx, wy)
+            elif pinning == 4:
+                wgt = wy
+            elif pinning == 5:
+                wgt = wx
+            else:
+                wgt = np.minimum(wx, wy)
+            dx, dy = dx * wgt, dy * wgt
+
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    px, py = xx / step, yy / step
+    flat = np.stack([dx, dy], axis=-1)
+    i0, j0 = np.floor(px).astype(np.int32), np.floor(py).astype(np.int32)
+    fx, fy = (px - i0)[..., None], (py - j0)[..., None]
+    d = (flat[j0, i0] * (1 - fx) + flat[j0, i0 + 1] * fx) * (1 - fy) + (flat[j0 + 1, i0] * (1 - fx) + flat[j0 + 1, i0 + 1] * fx) * fy
+    pre = img.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType,
+                      alphaType=skia.AlphaType.kPremul_AlphaType).astype(np.float32) / 255.0
+    out = _sample(pre, xx - d[..., 0] * res, yy - d[..., 1] * res)
+    out = (np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8)
+    return skia.Image.fromarray(np.ascontiguousarray(out), colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                alphaType=skia.AlphaType.kPremul_AlphaType)

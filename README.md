@@ -97,7 +97,7 @@ Formats (`-f`): `prores4444` (default), `prores4444xq`, `png-mov`, `h264`.
 - **Shape layers:** paths, rectangle, ellipse, star, fill/stroke, gradients, trim paths, round corners, merge paths, offset, dashes
 - **Text:** point and paragraph text, animators with range selectors (opacity, position, scale, rotation, colour, tracking)
 - **Compositing:** precomps, parenting, time remapping, track mattes (alpha/luma), blend modes including stencil/silhouette, 2.5D layers with camera, masks, adjustment layers
-- **Effects:** drop shadow, gradient ramp, Gaussian blur, camera lens blur, linear wipe, fill, tint
+- **Effects:** drop shadow, gradient ramp, Gaussian blur, camera lens blur, linear wipe, fill, tint, turbulent displace
 - **Layer styles:** colour overlay, gradient overlay, stroke, drop shadow, outer glow
 - **Footage:** solids, images, Illustrator/PDF, EPS (with Ghostscript), audio
 - **Expressions** through an embedded JavaScript engine: `sourceRectAtTime`, `wiggle`, `effect()`, `content()`, `thisComp.layer()`, `loopOut`, `linear`/`ease`, vector arithmetic

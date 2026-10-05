@@ -95,7 +95,7 @@ Formate (`-f`): `prores4444` (Standard), `prores4444xq`, `png-mov`, `h264`.
 - **Shape-Ebenen:** Pfade, Rechteck, Ellipse, Stern, Fill/Stroke, Verläufe, Trim Paths, Round Corners, Merge Paths, Offset, Dashes
 - **Text:** Punkt- und Absatztext, Animatoren mit Bereichsauswahl (Deckkraft, Position, Skalierung, Drehung, Farbe, Laufweite)
 - **Komposition:** Precomps, Parenting, Time-Remap, Track Mattes (Alpha/Luma), Blend Modes inklusive Stencil/Silhouette, 2,5D-Ebenen mit Kamera, Masken, Einstellungsebenen
-- **Effekte:** Schlagschatten, Verlauf, Gaußscher Weichzeichner, Kamera-Linsenunschärfe, Lineare Blende, Füllen, Färben
+- **Effekte:** Schlagschatten, Verlauf, Gaußscher Weichzeichner, Kamera-Linsenunschärfe, Lineare Blende, Füllen, Färben, Turbulentes Versetzen
 - **Ebenenstile:** Farbüberlagerung, Verlaufsüberlagerung, Kontur, Schlagschatten, Schein nach außen
 - **Footage:** Farbflächen, Bilder, Illustrator/PDF, EPS (mit Ghostscript), Audio
 - **Expressions** über eine eingebettete JavaScript-Engine: `sourceRectAtTime`, `wiggle`, `effect()`, `content()`, `thisComp.layer()`, `loopOut`, `linear`/`ease`, Vektor-Arithmetik
