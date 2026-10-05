@@ -128,7 +128,7 @@ def transform(ctx, p, img):
 @effect("ADBE Glo2", pad=lambda p: float(p.get("Glow Radius", 10)) * 2 + 4)
 def glow(ctx, p, img):
     based_on_alpha = int(p.get("Glow Based On", 2)) == 1
-    thr = float(p.get("Glow Threshold", 60)) / 100.0
+    thr = float(p.get("Glow Threshold", 153)) / 255.0  # shown in percent, stored as 0..255 (153 = 60 %)
     radius = float(p.get("Glow Radius", 10)) * ctx.res
     intensity = float(p.get("Glow Intensity", 1))
     composite = int(p.get("Composite Original", 2))  # 1 on top, 2 behind, 3 none
@@ -136,11 +136,13 @@ def glow(ctx, p, img):
     a = _arr(img)
     rgb, alpha = a[..., :3], a[..., 3:4]
     if based_on_alpha:
-        level = alpha[..., 0]
+        mask = np.clip((alpha - thr) / max(1e-3, 1 - thr), 0, 1)
+        src = np.concatenate([rgb * mask, mask], axis=2)
     else:
-        level = (rgb @ np.array([0.299, 0.587, 0.114], np.float32)) * alpha[..., 0]
-    mask = np.clip((level - thr) / max(1e-3, 1 - thr), 0, 1)[..., None]
-    src = np.concatenate([rgb * mask, alpha * mask], axis=2)
+        # each colour channel above the threshold glows, so saturated colours glow in their own hue
+        ch = np.clip((rgb * alpha - thr) / max(1e-3, 1 - thr), 0, 1)
+        mask = ch.max(axis=2, keepdims=True)
+        src = np.concatenate([ch / np.maximum(mask, 1e-6), mask], axis=2)
     if colors_ab:
         ca = np.array(p.get("Color A", [1, 1, 1, 1])[:3], np.float32)
         cb = np.array(p.get("Color B", [0, 0, 0, 1])[:3], np.float32)
