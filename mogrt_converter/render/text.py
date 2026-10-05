@@ -425,6 +425,11 @@ class TextRenderer:
     def __init__(self, ev: Evaluator):
         self.ev = ev
         self._skfonts: dict[tuple[str, float], skia.Font] = {}
+        self._layouts: dict[tuple[int, float], tuple[TextLayout, list[CharState]]] = {}
+
+    def clear_cache(self) -> None:
+        """Layouts depend on values and time; cleared with the evaluator's cache."""
+        self._layouts.clear()
 
     def _skfont(self, fd: FontData, size: float) -> skia.Font:
         key = (fd.path + str(fd.index), size)
@@ -439,6 +444,12 @@ class TextRenderer:
         return f
 
     def layout(self, layer: Any, t: float) -> tuple[TextLayout, list[CharState]]:
+        key = (id(layer), round(t, 6))
+        if key not in self._layouts:
+            self._layouts[key] = self._layout(layer, t)
+        return self._layouts[key]
+
+    def _layout(self, layer: Any, t: float) -> tuple[TextLayout, list[CharState]]:
         tv = self.ev.value(layer.property("ADBE Text Properties").property("ADBE Text Document"), t)
         lay = layout_text(tv)
         # tracking animators change the layout; re-layout with per-char extra tracking
@@ -468,6 +479,43 @@ class TextRenderer:
             acc = skia.Rect.MakeLTRB(acc.left() - pad, acc.top() - pad, acc.right() + pad, acc.bottom() + pad)
         return acc
 
+    @staticmethod
+    def _glyph_matrix(g: Any, st: Any) -> skia.Matrix:
+        m = skia.Matrix()
+        # character anchor: horizontal centre of the advance on the baseline
+        cx = g.x + g.advance / 2
+        m.preTranslate(cx + st.pos[0], g.y + st.pos[1])
+        if st.rotation:
+            m.preRotate(st.rotation)
+        if st.skew:
+            m.preConcat(skia.Matrix.MakeAll(1, -math.tan(math.radians(st.skew)), 0, 0, 1, 0, 0, 0, 1))
+        if st.scale != (1.0, 1.0):
+            m.preScale(st.scale[0], st.scale[1])
+        m.preTranslate(-g.advance / 2 - st.anchor[0], -st.anchor[1])
+        return m
+
+    def ink_bounds(self, layer: Any, t: float) -> skia.Rect:
+        """Where the glyphs are drawn, animators included (bounds() leaves them out, like sourceRectAtTime)."""
+        lay, states = self.layout(layer, t)
+        doc = lay.style
+        acc = skia.Rect.MakeEmpty()
+        grow = 0.0
+        for g, st in zip(lay.glyphs, states):
+            if not g.char.strip() or st.opacity <= 0.0005:
+                continue
+            path = self._skfont(g.font, g.size).getPath(g.gid)
+            if path is None:
+                continue
+            p = skia.Path(path)
+            p.transform(self._glyph_matrix(g, st))
+            acc.join(p.computeTightBounds())
+            grow = max(grow, st.blur * 1.5)
+        if getattr(doc, "apply_stroke", False) and doc.stroke_width:
+            grow += doc.stroke_width / 2
+        if grow and not acc.isEmpty():
+            acc = skia.Rect.MakeLTRB(acc.left() - grow, acc.top() - grow, acc.right() + grow, acc.bottom() + grow)
+        return acc
+
     def draw(self, canvas: skia.Canvas, layer: Any, t: float) -> None:
         lay, states = self.layout(layer, t)
         doc = lay.style
@@ -481,19 +529,8 @@ class TextRenderer:
             path = f.getPath(g.gid)
             if path is None:
                 continue
-            m = skia.Matrix()
-            # character anchor: horizontal centre of the advance on the baseline
-            cx = g.x + g.advance / 2
-            m.preTranslate(cx + st.pos[0], g.y + st.pos[1])
-            if st.rotation:
-                m.preRotate(st.rotation)
-            if st.skew:
-                m.preConcat(skia.Matrix.MakeAll(1, -math.tan(math.radians(st.skew)), 0, 0, 1, 0, 0, 0, 1))
-            if st.scale != (1.0, 1.0):
-                m.preScale(st.scale[0], st.scale[1])
-            m.preTranslate(-g.advance / 2 - st.anchor[0], -st.anchor[1])
             p = skia.Path(path)
-            p.transform(m)
+            p.transform(self._glyph_matrix(g, st))
             if fill_on and stroke_on:
                 ops = ["fill", "stroke"] if stroke_over else ["stroke", "fill"]
             else:

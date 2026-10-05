@@ -100,17 +100,19 @@ def _Rz(deg):
     return m
 
 
+# X and Y rotate like Z (and AE): clockwise when looking along the positive axis (x right, y down,
+# z into the screen), so a positive X rotation tilts the bottom edge away from the viewer
 def _Ry(deg):
     c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
     m = np.eye(4)
-    m[0, 0], m[0, 2], m[2, 0], m[2, 2] = c, -s, s, c
+    m[0, 0], m[0, 2], m[2, 0], m[2, 2] = c, s, -s, c
     return m
 
 
 def _Rx(deg):
     c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
     m = np.eye(4)
-    m[1, 1], m[1, 2], m[2, 1], m[2, 2] = c, s, -s, c
+    m[1, 1], m[1, 2], m[2, 1], m[2, 2] = c, -s, s, c
     return m
 
 
@@ -174,6 +176,7 @@ class Renderer:
 
     def set_values(self, values: dict[str, Any]) -> None:
         self.ev.apply_controls(values)
+        self.text.clear_cache()
 
     @property
     def duration(self) -> float:
@@ -220,6 +223,7 @@ class Renderer:
     def render_frame(self, t: float) -> skia.Image:
         """Render the frame at output time t (seconds)."""
         self.ev.clear_cache()
+        self.text.clear_cache()
         self._comp_cache = {}
         comp = self.mogrt.main_comp
         if self.motion is None:
@@ -372,7 +376,7 @@ class Renderer:
         if kind == "ShapeLayer":
             return shape_bounds(self.ev, layer, t)
         if kind == "TextLayer":
-            return self.text.bounds(layer, t)
+            return self.text.ink_bounds(layer, t)
         return skia.Rect.MakeWH(float(getattr(layer, "width", 0) or 0), float(getattr(layer, "height", 0) or 0))
 
     def source_time(self, layer: Any, t: float) -> float:
@@ -840,8 +844,36 @@ class Renderer:
         ys, xs = np.nonzero(surf.makeImageSnapshot().toarray()[..., 3])
         if len(xs) == 0:
             return skia.Rect.MakeEmpty()
-        return skia.Rect.MakeLTRB(lim.left() + xs.min() / k, lim.top() + ys.min() / k,
-                                  lim.left() + (xs.max() + 1) / k, lim.top() + (ys.max() + 1) / k)
+        out = skia.Rect.MakeLTRB(lim.left() + xs.min() / k, lim.top() + ys.min() / k,
+                                 lim.left() + (xs.max() + 1) / k, lim.top() + (ys.max() + 1) / k)
+        # the layer's masks cut it before its effects run (a wipe mask shrinks a box drawn by Beam)
+        mb = self._mask_bounds(layer, t)
+        if mb is not None and not out.intersect(mb):
+            return skia.Rect.MakeEmpty()
+        return out
+
+    def _mask_bounds(self, layer: Any, t: float) -> skia.Rect | None:
+        """Bounding box of the layer's masks if they only add area (else None: no simple limit)."""
+        if not self._has_masks(layer):
+            return None
+        out = skia.Rect.MakeEmpty()
+        for mk in self._prop(layer, "ADBE Mask Parade"):
+            if not getattr(mk, "enabled", True):
+                continue
+            if getattr(getattr(mk, "mask_mode", None), "name", "ADD") != "ADD" or getattr(mk, "inverted", False):
+                return None
+            if self._val(mk, t, "ADBE Mask Opacity", default=100.0) <= 0:
+                continue
+            shape = self._val(mk, t, "ADBE Mask Shape")
+            if shape is None:
+                continue
+            p = skia.Path()
+            add_contour(p, contour_from_shape(shape))
+            feather = self._val(mk, t, "ADBE Mask Feather", default=[0, 0]) or [0, 0]
+            f = max(feather) if isinstance(feather, list) else float(feather)
+            b = p.computeTightBounds()
+            out.join(skia.Rect.MakeLTRB(b.left() - f, b.top() - f, b.right() + f, b.bottom() + f))
+        return out
 
     def _apply_masks(self, c: skia.Canvas, layer: Any, t: float, bounds: skia.Rect) -> None:
         parade = self._prop(layer, "ADBE Mask Parade")
