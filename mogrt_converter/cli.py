@@ -225,7 +225,22 @@ def motion_args(p: argparse.ArgumentParser) -> None:
     g.add_argument("--opacity", type=float, metavar="PROZENT", help="Deckkraft in %%")
 
 
+def _utf8_console() -> None:
+    """Print template names that contain non-ASCII characters.
+
+    A frozen Windows build keeps the console codepage (cp936/GBK), which raises
+    UnicodeEncodeError on umlauts or CJK. PYTHONIOENCODING does not reach a
+    frozen app, so reconfigure the streams explicitly.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> None:
+    _utf8_console()
     ap = argparse.ArgumentParser(prog="mogrt", description="MOGRT-Vorlagen ohne Adobe rendern")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
