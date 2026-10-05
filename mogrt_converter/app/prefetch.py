@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing
 import os
+import sys
 import threading
 from collections import OrderedDict
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -20,6 +22,20 @@ MAX_BYTES = 600 * 1024 * 1024  # all cached states together
 # ------------------------------------------------------------------ worker process
 _renderers: dict[str, Any] = {}
 _state: dict[str, str] = {}
+
+
+def _init_worker() -> None:
+    """Workers run at low priority so the window and the preview stay responsive (issue #4)."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.nice(10)
+    except Exception:
+        pass
 
 
 def _render(path: str, state: dict, frames: list[int], fps: float) -> list[tuple[int, bytes]]:
@@ -54,7 +70,8 @@ def state_key(path: str, state: dict) -> str:
 
 
 def workers() -> int:
-    return max(2, min(8, (os.cpu_count() or 4) - 2))
+    # cpu_count() includes hyperthreads; every worker holds its own copy of the template in memory
+    return max(2, min(6, (os.cpu_count() or 4) // 2))
 
 
 class Prefetcher:
@@ -98,7 +115,9 @@ class Prefetcher:
             self.active = (path, key)
             have = set(self.frames.get(key, {}))
             if self.pool is None:
-                self.pool = ProcessPoolExecutor(max_workers=workers())
+                # always spawn: forking the threaded server process can deadlock the child (Linux default)
+                self.pool = ProcessPoolExecutor(max_workers=workers(), mp_context=multiprocessing.get_context("spawn"),
+                                                initializer=_init_worker)
             pool = self.pool
         todo = [f for f in list(range(first, count)) + list(range(0, first)) if f not in have]
         n = workers()

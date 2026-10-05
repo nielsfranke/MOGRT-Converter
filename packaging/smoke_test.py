@@ -119,8 +119,9 @@ def main() -> int:
         if done < count:
             raise SystemExit("prefetch did not finish")
         # a worker that boots the whole app would start its own server: there must be exactly one app instance
-        apps = [k for k in kids if "--multiprocessing-fork" not in k and "spawn_main" not in k
-                and "resource_tracker" not in k and ("MOGRT Converter" in k or "mogrt-converter" in k)]
+        exe_name = Path(exe).name.lower()
+        apps = [k for k in kids if "--multiprocessing-fork" not in k and "resource_tracker" not in k
+                and "webview" not in k.lower() and exe_name in k.lower()]
         if apps:
             raise SystemExit(f"worker processes started the app itself: {apps}")
         assert alive(base), "server not answering after prefetch"
