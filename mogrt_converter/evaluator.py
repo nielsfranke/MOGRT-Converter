@@ -183,6 +183,12 @@ function __run(id, t, vjson, lref, cref, pref, fd) {
   var footage = function(n) { return null; };
   var wiggle = function(f, a, o, m, tt) { var r = JSON.parse(__wiggle(f, a, o === undefined ? 1 : o, m === undefined ? 0.5 : m, tt === undefined ? time : tt)); if (r && r.t === 'x') throw new Error(r.m); return r; };
   var smooth = function() { return value; };
+  var posterizeTime = function(f) {
+    var pt = f > 0 ? Math.floor(time * f + 1e-6) / f : 0;
+    if (Math.abs(pt - time) < 1e-9) return;
+    var r = JSON.parse(__posterize(pt)); if (r && r.t === 'x') throw new Error(r.m);
+    time = pt; value = r.v;
+  };
   var valueAtTime = function(tt) { return thisProperty.valueAtTime(tt); };
   var velocityAtTime = function(tt) { return thisProperty.velocityAtTime(tt); };
   var loopOut = function(type, n) { return JSON.parse(__loop('out', type || 'cycle', n || 0, time)); };
@@ -257,6 +263,7 @@ class Evaluator:
         self.js.add_callable("__callm", self._safe(self._js_callm))
         self.js.add_callable("__wiggle", self._safe(self._js_wiggle))
         self.js.add_callable("__loop", self._safe(self._js_loop))
+        self.js.add_callable("__posterize", self._safe(self._js_posterize))
         self.js.eval(_PRELUDE)
         self.js.eval(_BIN_PRELUDE)
         self._comp_of_layer: dict[int, Any] = {}
@@ -683,6 +690,12 @@ class Evaluator:
             i, k = min(enumerate(ks), key=lambda e: abs(e[1].time - float(args[0])))
             return self._val({"time": k.time, "value": self._to_js(k.value), "index": i + 1})
         return self._val(None)
+
+    def _js_posterize(self, t: float) -> str:
+        """posterizeTime(): the rest of the expression (other properties too) runs at time t."""
+        prop, _ = self._stack[-1]
+        self._stack[-1] = (prop, float(t))
+        return json.dumps({"v": self._to_js(self.raw(prop, float(t)))})
 
     def _js_wiggle(self, freq: float, amp: float, octaves: float, mult: float, t: float) -> str:
         prop, now = self._stack[-1]

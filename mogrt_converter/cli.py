@@ -226,7 +226,7 @@ def motion_args(p: argparse.ArgumentParser) -> None:
 
 
 def _utf8_console() -> None:
-    """Print template names that contain non-ASCII characters.
+    """Make the console accept umlauts and CJK in template names.
 
     A frozen Windows build keeps the console codepage (cp936/GBK), which raises
     UnicodeEncodeError on umlauts or CJK. PYTHONIOENCODING does not reach a
