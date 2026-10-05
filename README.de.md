@@ -92,13 +92,13 @@ Formate (`-f`): `prores4444` (Standard), `prores4444xq`, `png-mov`, `h264`.
 <details>
 <summary>Ebenen, Effekte, Expressions</summary>
 
-- **Shape-Ebenen:** Pfade, Rechteck, Ellipse, Stern, Fill/Stroke, Verläufe, Trim Paths, Round Corners, Merge Paths, Offset, Dashes
+- **Shape-Ebenen:** Pfade, Rechteck, Ellipse, Stern, Fill/Stroke, Verläufe, Trim Paths, Round Corners, Merge Paths, Offset, Dashes, Repeater, Pucker & Bloat, Zig Zag
 - **Text:** Punkt- und Absatztext, Animatoren mit Bereichsauswahl (Deckkraft, Position, Skalierung, Drehung, Farbe, Laufweite)
 - **Komposition:** Precomps, Parenting, Time-Remap, Track Mattes (Alpha/Luma), Blend Modes inklusive Stencil/Silhouette, 2,5D-Ebenen mit Kamera, Masken, Einstellungsebenen
-- **Effekte:** Schlagschatten, Verlauf, Gaußscher Weichzeichner, Kamera-Linsenunschärfe, Lineare Blende, Füllen, Färben, Turbulentes Versetzen
-- **Ebenenstile:** Farbüberlagerung, Verlaufsüberlagerung, Kontur, Schlagschatten, Schein nach außen
-- **Footage:** Farbflächen, Bilder, Illustrator/PDF, EPS (mit Ghostscript), Audio
-- **Expressions** über eine eingebettete JavaScript-Engine: `sourceRectAtTime`, `wiggle`, `effect()`, `content()`, `thisComp.layer()`, `loopOut`, `linear`/`ease`, Vektor-Arithmetik
+- **Effekte:** Weichzeichner (Gauß, schnell/Box, Kamera-Linse, Richtung, CC Vector Blur), Farbe (Füllen, Färben, Dreifarbig, Kurven, Tonwerte, Belichtung, Farbton/Sättigung, Helligkeit & Kontrast, Kanäle verschieben, Schwellenwert, Umkehren), Masken (Matte festlegen, Matte/Einfaches Matte vergrößern, Minimax), Verzerren (Turbulentes Versetzen, Versetzungsmatrix, Wellen, Gitterverkrümmung, Eckpunkte verschieben, Spiegeln, Versatz, Aufgeraute Kanten, Streuen, CC Cylinder, CC Glass, CC Blobbylize, CC HexTile), Generatoren (Verlauf, 4-Farben-Verlauf, Fraktale und turbulente Störungen, Raster, CC Light Sweep, Vegas), Übergänge (Linear, Radial, Jalousie, Kartenblende), Partikel (CC Particle Systems II, CC Particle World, CC Glue Gun), Echo, Zeitverzerrung (Posterize Time), Leuchten, Schlagschatten, Relief, Konturen finden, Scharfzeichnen
+- **Ebenenstile:** Farbüberlagerung, Verlaufsüberlagerung, Kontur, Schlagschatten, Schein nach außen, Schatten nach innen, Schein nach innen, Abgeflachte Kante und Relief
+- **Footage:** Farbflächen, Bilder, Video, Illustrator/PDF, EPS (mit Ghostscript), Audio
+- **Expressions** über eine eingebettete JavaScript-Engine: `sourceRectAtTime`, `wiggle`, `effect()`, `content()`, `thisComp.layer()`, `loopOut`, `posterizeTime`, Marker, `linear`/`ease`, Vektor-Arithmetik
 
 </details>
 

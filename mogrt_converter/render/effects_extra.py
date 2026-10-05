@@ -460,11 +460,13 @@ def four_color_gradient(ctx, p, img):
 # --------------------------------------------------------------------------- distort
 
 def _hash3(ix: np.ndarray, iy: np.ndarray, iz: np.ndarray, seed: int) -> np.ndarray:
-    """Lattice values in [-1, 1] (deterministic per seed)."""
-    n = (ix * 374761393 + iy * 668265263 + iz * 2147483647 + seed * 1274126177) & 0xFFFFFFFF
-    n = ((n ^ (n >> 13)) * 1274126177) & 0xFFFFFFFF
-    n = n ^ (n >> 16)
-    return (n & 0xFFFF).astype(np.float32) / 32767.5 - 1.0
+    """Lattice values in [-1, 1] (deterministic per seed); uint32 arithmetic wraps like the 32-bit hash."""
+    k = np.uint32((int(iz) * 2147483647 + seed * 1274126177) & 0xFFFFFFFF)
+    with np.errstate(over="ignore"):
+        n = ix.astype(np.uint32) * np.uint32(374761393) + iy.astype(np.uint32) * np.uint32(668265263) + k
+        n = (n ^ (n >> np.uint32(13))) * np.uint32(1274126177)
+    n = n ^ (n >> np.uint32(16))
+    return (n & np.uint32(0xFFFF)).astype(np.float32) / 32767.5 - 1.0
 
 
 def _vnoise3(x: np.ndarray, y: np.ndarray, z: float, seed: int) -> np.ndarray:
@@ -590,3 +592,7 @@ def turbulent_displace(ctx, p, img):
     out = (np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8)
     return skia.Image.fromarray(np.ascontiguousarray(out), colorType=skia.ColorType.kRGBA_8888_ColorType,
                                 alphaType=skia.AlphaType.kPremul_AlphaType)
+
+
+# the other effect modules register themselves on import
+from . import effects_color, effects_layers, effects_sim, effects_warp  # noqa: E402,F401

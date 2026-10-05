@@ -316,3 +316,72 @@ def offset(geo: Geo, amount: float, join: int, miter: float) -> Geo:
     op = skia.PathOp.kUnion_PathOp if amount > 0 else skia.PathOp.kDifference_PathOp
     r = skia.Op(p, stroked, op)
     return Geo(path=r if r is not None else p)
+
+
+def pucker_bloat(geo: Geo, amount: float) -> Geo:
+    """AE Pucker & Bloat: vertices move to the contour centre, tangents away from it (or reverse)."""
+    if geo.path is not None or abs(amount) < 1e-6:
+        return geo
+    a = amount / 100.0
+    out = []
+    for c in geo.contours:
+        if not len(c.v):
+            out.append(c.copy())
+            continue
+        ctr = c.v.mean(axis=0)
+        v = c.v + (ctr - c.v) * a
+        o_abs = c.v + c.o
+        i_abs = c.v + c.i
+        o_abs = o_abs + (ctr - o_abs) * -a
+        i_abs = i_abs + (ctr - i_abs) * -a
+        out.append(Contour(v, i_abs - v, o_abs - v, c.closed))
+    return Geo(out)
+
+
+def _bez(p0, p1, p2, p3, t):
+    u = 1 - t
+    pt = u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3
+    d = 3 * u * u * (p1 - p0) + 6 * u * t * (p2 - p1) + 3 * t * t * (p3 - p2)
+    return pt, d
+
+
+def zigzag(geo: Geo, size: float, ridges: float, smooth: bool) -> Geo:
+    """AE Zig Zag: every segment is split into ridges+1 steps, points alternate along the normal."""
+    if geo.path is not None or abs(size) < 1e-6:
+        return geo
+    r = max(0, int(round(ridges)))
+    out = []
+    for c in geo.contours:
+        n = len(c.v)
+        if n < 2:
+            out.append(c.copy())
+            continue
+        segs = n if c.closed else n - 1
+        pts, tans = [], []
+        sign = 1.0
+        for k in range(segs):
+            a, b = k, (k + 1) % n
+            p0, p3 = c.v[a], c.v[b]
+            p1, p2 = p0 + c.o[a], p3 + c.i[b]
+            steps = r + 1
+            last = steps if (not c.closed and k == segs - 1) else steps - 1
+            for j in range(last + 1):
+                t = j / steps
+                pt, d = _bez(p0, p1, p2, p3, t)
+                ln = math.hypot(d[0], d[1])
+                if ln < 1e-9:
+                    d = p3 - p0
+                    ln = math.hypot(d[0], d[1]) or 1.0
+                nrm = np.array([-d[1], d[0]]) / ln
+                pts.append(pt + nrm * size * sign)
+                seg_len = math.hypot(*(p3 - p0)) / steps
+                tans.append(d / ln * seg_len / 2)
+                sign = -sign
+        v = np.array(pts, dtype=float)
+        if smooth:
+            tg = np.array(tans, dtype=float)
+            out.append(Contour(v, -tg, tg, c.closed))
+        else:
+            z = np.zeros_like(v)
+            out.append(Contour(v, z, z.copy(), c.closed))
+    return Geo(out)

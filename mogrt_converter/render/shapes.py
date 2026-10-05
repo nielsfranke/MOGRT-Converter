@@ -154,6 +154,16 @@ def build_group(ev: Evaluator, contents: Any, matrix: skia.Matrix, opacity: floa
             join = int(_v(ev, item, "ADBE Vector Offset Line Join", t, 1))
             miter = _v(ev, item, "ADBE Vector Offset Miter Limit", t, 4.0)
             _apply(entries, lambda geos: [P.offset(g, amt, join, miter) for g in geos])
+        elif mn == "ADBE Vector Filter - PB":
+            amt = _v(ev, item, "ADBE Vector PuckerBloat Amount", t, 0.0)
+            _apply(entries, lambda geos: [P.pucker_bloat(g, amt) for g in geos])
+        elif mn == "ADBE Vector Filter - Zigzag":
+            size = _v(ev, item, "ADBE Vector Zigzag Size", t, 10.0)
+            ridges = _v(ev, item, "ADBE Vector Zigzag Detail", t, 5.0)
+            smooth = int(_v(ev, item, "ADBE Vector Zigzag Points", t, 1) or 1) == 2
+            _apply(entries, lambda geos: [P.zigzag(g, size, ridges, smooth) for g in geos])
+        elif mn == "ADBE Vector Filter - Repeater":
+            node.items, entries = _repeat(ev, item, node.items, entries, t)
         elif mn in ("ADBE Vector Transform Group", "ADBE Vector Materials Group"):
             pass
         else:
@@ -162,6 +172,56 @@ def build_group(ev: Evaluator, contents: Any, matrix: skia.Matrix, opacity: floa
                 import sys
                 print(f"WARNUNG: Shape-Element '{mn}' wird noch nicht unterstützt", file=sys.stderr)
     return node, entries
+
+
+def _repeater_matrix(anchor, pos, scale, rot, k: float) -> skia.Matrix:
+    """The repeater transform applied k times (fractional k interpolates the last step)."""
+    def step(f: float) -> skia.Matrix:
+        m = skia.Matrix()
+        m.preTranslate(pos[0] * f + anchor[0], pos[1] * f + anchor[1])
+        m.preRotate(rot * f)
+        m.preScale((scale[0] / 100.0) ** f if scale[0] > 0 else 0.0, (scale[1] / 100.0) ** f if scale[1] > 0 else 0.0)
+        m.preTranslate(-anchor[0], -anchor[1])
+        return m
+
+    whole = int(math.floor(abs(k)))
+    frac = abs(k) - whole
+    one = step(1.0)
+    if k < 0:
+        inv = skia.Matrix()
+        one = inv if one.invert(inv) else skia.Matrix()
+    m = skia.Matrix()
+    for _ in range(whole):
+        m = skia.Matrix.Concat(one, m)
+    if frac > 1e-9:
+        m = skia.Matrix.Concat(step(frac if k > 0 else -frac), m)
+    return m
+
+
+def _repeat(ev: Evaluator, item: Any, items: list[Any], entries: list[tuple[Entry, skia.Matrix]], t: float):
+    """AE Repeater: copies of everything above it in the group (geometry and paints)."""
+    copies = _v(ev, item, "ADBE Vector Repeater Copies", t, 3.0)
+    offset = _v(ev, item, "ADBE Vector Repeater Offset", t, 0.0)
+    above = int(_v(ev, item, "ADBE Vector Repeater Order", t, 1) or 1) == 1
+    tr = item.property("ADBE Vector Repeater Transform")
+    anchor = _v(ev, tr, "ADBE Vector Repeater Anchor", t, [0, 0])
+    pos = _v(ev, tr, "ADBE Vector Repeater Position", t, [100, 0])
+    scale = _v(ev, tr, "ADBE Vector Repeater Scale", t, [100, 100])
+    rot = _v(ev, tr, "ADBE Vector Repeater Rotation", t, 0.0)
+    op1 = _v(ev, tr, "ADBE Vector Repeater Opacity 1", t, 100.0) / 100.0
+    op2 = _v(ev, tr, "ADBE Vector Repeater Opacity 2", t, 100.0) / 100.0
+    n = int(math.ceil(copies - 1e-9)) if copies > 0 else 0
+    new_items, new_entries = [], []
+    for i in range(n):
+        m = _repeater_matrix(anchor, pos, scale, rot, i + offset)
+        op = op1 + (op2 - op1) * (i / (n - 1) if n > 1 else 0.0)
+        if i == n - 1 and copies < n:  # fractional last copy fades in
+            op *= copies - (n - 1)
+        new_items.append(GroupNode(m, op, list(items)))
+        new_entries += [(en, skia.Matrix.Concat(m, em)) for en, em in entries]
+    if above:
+        new_items.reverse()  # items are top first: the last copy ends up on top
+    return new_items, new_entries
 
 
 def _apply(entries: list[tuple[Entry, skia.Matrix]], fn) -> None:

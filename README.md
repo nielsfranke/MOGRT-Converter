@@ -94,13 +94,13 @@ Formats (`-f`): `prores4444` (default), `prores4444xq`, `png-mov`, `h264`.
 <details>
 <summary>Layers, effects, expressions</summary>
 
-- **Shape layers:** paths, rectangle, ellipse, star, fill/stroke, gradients, trim paths, round corners, merge paths, offset, dashes
+- **Shape layers:** paths, rectangle, ellipse, star, fill/stroke, gradients, trim paths, round corners, merge paths, offset, dashes, repeater, pucker & bloat, zig zag
 - **Text:** point and paragraph text, animators with range selectors (opacity, position, scale, rotation, colour, tracking)
 - **Compositing:** precomps, parenting, time remapping, track mattes (alpha/luma), blend modes including stencil/silhouette, 2.5D layers with camera, masks, adjustment layers
-- **Effects:** drop shadow, gradient ramp, Gaussian blur, camera lens blur, linear wipe, fill, tint, turbulent displace
-- **Layer styles:** colour overlay, gradient overlay, stroke, drop shadow, outer glow
-- **Footage:** solids, images, Illustrator/PDF, EPS (with Ghostscript), audio
-- **Expressions** through an embedded JavaScript engine: `sourceRectAtTime`, `wiggle`, `effect()`, `content()`, `thisComp.layer()`, `loopOut`, `linear`/`ease`, vector arithmetic
+- **Effects:** blurs (Gaussian, fast/box, camera lens, directional, CC Vector Blur), colour (fill, tint, tritone, curves, levels, exposure, hue/saturation, brightness & contrast, shift channels, threshold, invert), mattes (set matte, matte/simple choker, minimax), distortion (turbulent and displacement map, wave warp, mesh warp, corner pin, mirror, offset, roughen edges, scatter, CC Cylinder, CC Glass, CC Blobbylize, CC HexTile), generators (gradient ramp, 4-colour gradient, fractal and turbulent noise, grid, CC Light Sweep, Vegas), transitions (linear, radial and venetian wipes, card wipe), particles (CC Particle Systems II, CC Particle World, CC Glue Gun), echo, posterize time, glow, drop shadow, emboss, find edges, sharpen
+- **Layer styles:** colour overlay, gradient overlay, stroke, drop shadow, outer glow, inner shadow, inner glow, bevel and emboss
+- **Footage:** solids, images, video, Illustrator/PDF, EPS (with Ghostscript), audio
+- **Expressions** through an embedded JavaScript engine: `sourceRectAtTime`, `wiggle`, `effect()`, `content()`, `thisComp.layer()`, `loopOut`, `posterizeTime`, markers, `linear`/`ease`, vector arithmetic
 
 </details>
 

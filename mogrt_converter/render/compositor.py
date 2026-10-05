@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,8 @@ from . import effects as fx
 from .paths import contour_from_shape, add_contour
 from .shapes import draw_shape_layer, shape_bounds
 from .text import TextRenderer
+
+VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mxf", ".mpg", ".mpeg"}
 
 SAMPLING = skia.SamplingOptions(skia.FilterMode.kLinear, skia.MipmapMode.kLinear)
 
@@ -48,7 +51,23 @@ _BLEND = {
     "ALPHA_ADD": skia.BlendMode.kPlus,
     "LIGHTER_COLOR": skia.BlendMode.kLighten,
     "DARKER_COLOR": skia.BlendMode.kDarken,
+    # dissolve: drawn normally after the alpha is dithered (see _dissolve)
+    "DISSOLVE": skia.BlendMode.kSrcOver,
+    "DANCING_DISSOLVE": skia.BlendMode.kSrcOver,
 }
+
+_DISSOLVE = ("DISSOLVE", "DANCING_DISSOLVE")
+
+
+def _dissolve(img: skia.Image, opacity: float, seed: int) -> skia.Image:
+    """AE Dissolve: every pixel is either fully shown or hidden, with probability alpha x opacity."""
+    a = img.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType, alphaType=skia.AlphaType.kUnpremul_AlphaType)
+    rnd = np.random.default_rng(seed).random(a.shape[:2], dtype=np.float32)
+    keep = rnd < (a[..., 3].astype(np.float32) / 255.0) * opacity
+    out = a.copy()
+    out[..., 3] = np.where(keep, 255, 0).astype(np.uint8)
+    return skia.Image.fromarray(np.ascontiguousarray(out), colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                alphaType=skia.AlphaType.kUnpremul_AlphaType)
 
 LUMA_TO_ALPHA = skia.ColorFilters.Matrix([
     0, 0, 0, 0, 1,
@@ -390,7 +409,11 @@ class Renderer:
                 return
             if msk == "PlaceholderSource":
                 return
-            img = self.footage_image(src)
+            local = self.find_footage_file(src)
+            if local is not None and local.suffix.lower() in VIDEO_SUFFIXES:
+                img = self.video_frame(src, local, self.source_time(layer, t))
+            else:
+                img = self.footage_image(src)
             if img is not None:
                 canvas.drawImageRect(img, skia.Rect.MakeWH(src.width, src.height), SAMPLING, skia.Paint(AntiAlias=True))
 
@@ -398,15 +421,54 @@ class Renderer:
 
     def find_footage_file(self, item: Any) -> Path | None:
         """Locate footage collected into the MOGRT (original paths may be Windows paths)."""
+        cache = self.__dict__.setdefault("_footage_paths", {})
+        if id(item) in cache:
+            return cache[id(item)]
         raw = str(getattr(item, "file", "") or "")
         if not raw:
             return None
         name = raw.replace("\\", "/").rsplit("/", 1)[-1]
         p = Path(raw)
         if p.exists():
-            return p
-        hits = list((self.mogrt.root / "aegraphic").rglob(name))
-        return hits[0] if hits else None
+            found = p
+        else:
+            hits = list((self.mogrt.root / "aegraphic").rglob(name))
+            found = hits[0] if hits else None
+        cache[id(item)] = found
+        return found
+
+    def video_frame(self, item: Any, path: Path, t: float) -> skia.Image | None:
+        """The frame of a video footage item at its time t (nothing before its start or after its end)."""
+        fps = float(getattr(item, "frame_rate", 0) or 25.0)
+        dur = float(getattr(item, "duration", 0) or 0)
+        if t < -1e-6 or (dur > 0 and t >= dur):
+            return None
+        frame = int(math.floor(t * fps + 1e-6))
+        cache = self.__dict__.setdefault("_video_frames", {})
+        key = (id(item), frame)
+        if key in cache:
+            return cache[key]
+        from ..output import ffmpeg_bin
+        from ..paths import no_window_flags
+
+        w, h = int(item.width), int(item.height)
+        cmd = [ffmpeg_bin(), "-v", "error", "-ss", f"{frame / fps:.6f}", "-i", str(path), "-frames:v", "1",
+               "-vf", f"scale={w}:{h}", "-f", "rawvideo", "-pix_fmt", "rgba", "-"]
+        img = None
+        try:
+            res = subprocess.run(cmd, capture_output=True, creationflags=no_window_flags())
+            if len(res.stdout) == w * h * 4:
+                arr = np.frombuffer(res.stdout, np.uint8).reshape(h, w, 4)
+                img = skia.Image.fromarray(np.ascontiguousarray(arr), colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                           alphaType=skia.AlphaType.kUnpremul_AlphaType)
+            else:
+                self.warn(f"Video '{item.name}' konnte nicht gelesen werden")
+        except Exception as e:
+            self.warn(f"Video '{item.name}' konnte nicht gelesen werden: {e}")
+        if len(cache) > 48:  # keep the most recent frames (a layer is usually shown several times per frame)
+            cache.pop(next(iter(cache)))
+        cache[key] = img
+        return img
 
     def footage_image(self, item: Any) -> skia.Image | None:
         key = id(item)
@@ -479,10 +541,12 @@ class Renderer:
             if getattr(layer, "adjustment_layer", False):
                 if self._has_effects(layer):
                     flush()
-                    if collapse is None and self._surfaces:
-                        self.apply_adjustment(canvas, comp, layer, t, scale, base_op)
+                    if self._surfaces:
+                        # in a collapsed precomp it also adjusts what lies below in the containing comp (as in AE)
+                        self.apply_adjustment(canvas, comp, layer, t, scale, base_op,
+                                              base if collapse is not None else None, camera)
                     else:
-                        self.warn(f"Einstellungsebene '{layer.name}' in kollabierter Precomp wird nicht unterstützt")
+                        self.warn(f"Einstellungsebene '{layer.name}' kann hier nicht angewendet werden")
                 continue
             m = base @ self.world_matrix(layer, t)
             is3d = bool(getattr(layer, "three_d_layer", False)) or (base3d and collapse is not None)
@@ -497,17 +561,57 @@ class Renderer:
             self.draw_layer(canvas, comp, layer, t, scale, m, base_op, camera, False)
         flush()
 
-    def apply_adjustment(self, canvas: skia.Canvas, comp: Any, layer: Any, t: float, scale: float, op_mult: float) -> None:
-        """Apply an adjustment layer's effects to everything drawn so far in this comp."""
+    def apply_adjustment(self, canvas: skia.Canvas, comp: Any, layer: Any, t: float, scale: float, op_mult: float,
+                         base: np.ndarray | None = None, camera: Camera | None = None) -> None:
+        """Apply an adjustment layer's effects to everything drawn so far.
+
+        Like AE, the layer's own alpha limits the area: its masks, and for shape, text and footage
+        layers their content (a shape adjustment layer only works where its shapes are)."""
         surf = self._surfaces[-1]
         before = surf.makeImageSnapshot()
-        bounds = skia.Rect.MakeWH(comp.width, comp.height)
-        ctx = fx.EffectContext(self, layer, t, bounds, scale)
+        total = canvas.getTotalMatrix()
+        sx = math.sqrt(abs(total.getScaleX() * total.getScaleY() - total.getSkewX() * total.getSkewY())) or scale
+        if base is None:
+            bounds, res = skia.Rect.MakeWH(comp.width, comp.height), scale
+        else:  # collapsed precomp: the surface belongs to the containing comp
+            bounds, res = skia.Rect.MakeWH(before.width() / sx, before.height() / sx), sx
+        ctx = fx.EffectContext(self, layer, t, bounds, res)
         img = before
         effects = [e for e in (self._prop(layer, "ADBE Effect Parade") or []) if getattr(e, "enabled", True) and not fx.is_control(e)]
         for e in effects:
             img = fx.apply(ctx, e, img)
         opacity = self._val(layer.transform, t, "ADBE Opacity", default=100.0) / 100.0 * op_mult
+        src = getattr(layer, "source", None)
+        solid = type(getattr(src, "main_source", None)).__name__ == "SolidSource"
+        if self._has_masks(layer) or not solid:
+            # coverage of the layer (content alpha and masks) in surface pixels
+            m = (base if base is not None else np.eye(4)) @ self.world_matrix(layer, t)
+            cm = self._canvas_matrix(m, camera, bool(getattr(layer, "three_d_layer", False)) and camera is not None)
+            if cm is not None:
+                ms = skia.Surface.MakeRasterN32Premul(before.width(), before.height())
+                mc = ms.getCanvas()
+                mc.clear(skia.ColorTRANSPARENT)
+                mc.setMatrix(skia.Matrix.Concat(total, cm))
+                lb = self.layer_content_bounds(layer, t)
+                if solid:
+                    mc.drawRect(lb, skia.Paint(Color=skia.ColorWHITE))
+                else:
+                    self.draw_content(mc, layer, t, scale)
+                if self._has_masks(layer):
+                    self._apply_masks(mc, layer, t, lb)
+                ms.getCanvas().resetMatrix()
+                masked = skia.Surface.MakeRasterN32Premul(before.width(), before.height())
+                c2 = masked.getCanvas()
+                c2.clear(skia.ColorTRANSPARENT)
+                c2.drawImage(img, 0, 0)
+                c2.drawImage(ms.makeImageSnapshot(), 0, 0, skia.SamplingOptions(), skia.Paint(BlendMode=skia.BlendMode.kDstIn))
+                outside = skia.Surface.MakeRasterN32Premul(before.width(), before.height())
+                c3 = outside.getCanvas()
+                c3.clear(skia.ColorTRANSPARENT)
+                c3.drawImage(before, 0, 0)
+                c3.drawImage(ms.makeImageSnapshot(), 0, 0, skia.SamplingOptions(), skia.Paint(BlendMode=skia.BlendMode.kDstOut))
+                c3.drawImage(masked.makeImageSnapshot(), 0, 0, skia.SamplingOptions(), skia.Paint(BlendMode=skia.BlendMode.kPlus))
+                img = outside.makeImageSnapshot()
         canvas.save()
         canvas.resetMatrix()
         canvas.clear(skia.ColorTRANSPARENT)
@@ -588,10 +692,15 @@ class Renderer:
 
     def _draw_layer_body(self, canvas: skia.Canvas, layer: Any, t: float, scale: float,
                          cm: skia.Matrix, opacity: float, blend: skia.BlendMode) -> None:
-        if self._has_effects(layer) or self._has_masks(layer):
+        dissolve = getattr(getattr(layer, "blending_mode", None), "name", "NORMAL") in _DISSOLVE
+        if self._has_effects(layer) or self._has_masks(layer) or dissolve:
             img, origin, res = self.render_layer_offscreen(layer, t, scale, cm)
             if img is None:
                 return
+            if dissolve:
+                dancing = getattr(layer.blending_mode, "name", "") == "DANCING_DISSOLVE"
+                seed = (getattr(layer, "index", 0) + 1) * 7919 + (int(round(t * 1000)) if dancing else 0)
+                img, opacity = _dissolve(img, opacity, seed), 1.0
             canvas.save()
             canvas.concat(cm)
             paint = skia.Paint(AntiAlias=True, Alphaf=opacity, BlendMode=blend)
@@ -611,8 +720,14 @@ class Renderer:
 
     def render_layer_offscreen(self, layer: Any, t: float, scale: float, cm: skia.Matrix):
         """Render content + masks + effects in layer space. Returns (image, origin xy, pixels per unit)."""
-        bounds = self.layer_content_bounds(layer, t)
         effects = [e for e in (self._prop(layer, "ADBE Effect Parade") or []) if getattr(e, "enabled", True) and not fx.is_control(e)]
+        # Posterize Time: the layer's content and effects run at a lower frame rate
+        for e in [e for e in effects if e.match_name == "ADBE Posterize Time"]:
+            fps = float(self.ev.value(e.property("ADBE Posterize Time-0001"), t) or 0)
+            if fps > 0:
+                t = math.floor(t * fps + 1e-6) / fps
+        effects = [e for e in effects if e.match_name != "ADBE Posterize Time"]
+        bounds = self.layer_content_bounds(layer, t)
         pad = sum(fx.padding(self, e, t) for e in effects) + fx.style_padding(self, layer, t)
         # effects may grow the layer beyond its bounds (shadows, glows, tiling) like in AE
         pad = min(pad, 4000.0)

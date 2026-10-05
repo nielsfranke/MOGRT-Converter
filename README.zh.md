@@ -94,13 +94,13 @@ mogrt batch template.mogrt names.csv -o renders/                      # one file
 <details>
 <summary>图层、效果、表达式</summary>
 
-- **形状图层**：路径、矩形、椭圆、星形、填充/描边、渐变、修边、圆角、合并路径、偏移、虚线
+- **形状图层**：路径、矩形、椭圆、星形、填充/描边、渐变、修边、圆角、合并路径、偏移、虚线、中继器、收缩和膨胀、锯齿
 - **文字**：点文本和段落文本、带范围选择器的动画器（不透明度、位置、缩放、旋转、颜色、字距）
 - **合成**：预合成、父子关系、时间重映射、轨道遮罩（Alpha/亮度）、包含模板/轮廓的混合模式、带摄像机的 2.5D 图层、蒙版、调整图层
-- **效果**：投影、渐变填充、高斯模糊、摄像机镜头模糊、线性擦除、填充、色调、湍流置换
-- **图层样式**：颜色叠加、渐变叠加、描边、投影、外发光
-- **素材**：纯色、图像、Illustrator/PDF、EPS（需 Ghostscript）、音频
-- **表达式**通过内置 JavaScript 引擎执行：`sourceRectAtTime`、`wiggle`、`effect()`、`content()`、`thisComp.layer()`、`loopOut`、`linear`/`ease`、向量运算
+- **效果**：模糊（高斯、快速/方框、摄像机镜头、定向、CC Vector Blur）、颜色（填充、色调、三色调、曲线、色阶、曝光度、色相/饱和度、亮度和对比度、转换通道、阈值、反转）、遮罩（设置遮罩、遮罩阻塞/简单阻塞、最小/最大）、扭曲（湍流置换、置换图、波形变形、网格变形、边角定位、镜像、偏移、毛边、分散、CC Cylinder、CC Glass、CC Blobbylize、CC HexTile）、生成（渐变填充、四色渐变、分形和湍流杂色、网格、CC Light Sweep、Vegas）、过渡（线性、径向、百叶窗、卡片擦除）、粒子（CC Particle Systems II、CC Particle World、CC Glue Gun）、残影、色调分离时间、发光、投影、浮雕、查找边缘、锐化
+- **图层样式**：颜色叠加、渐变叠加、描边、投影、外发光、内阴影、内发光、斜面和浮雕
+- **素材**：纯色、图像、视频、Illustrator/PDF、EPS（需 Ghostscript）、音频
+- **表达式**通过内置 JavaScript 引擎执行：`sourceRectAtTime`、`wiggle`、`effect()`、`content()`、`thisComp.layer()`、`loopOut`、`posterizeTime`、标记、`linear`/`ease`、向量运算
 
 </details>
 

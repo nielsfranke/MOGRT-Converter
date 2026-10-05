@@ -33,14 +33,120 @@ class EffectContext:
     res: float  # pixels per layer unit
     original: Any = None  # layer image before any effect (CC Composite)
 
+    def to_layer(self, px: float, py: float) -> tuple[float, float]:
+        """Image pixel -> layer coordinates."""
+        return self.bounds.left() + px / self.res, self.bounds.top() + py / self.res
+
+    def layer_rect(self) -> skia.Rect:
+        """The layer's own rectangle (AE layer size) in layer coordinates."""
+        lb = effect_rect(self.renderer, self.layer, self.t)
+        if lb.width() <= 0 or lb.height() <= 0:
+            return skia.Rect.MakeLTRB(self.bounds.left(), self.bounds.top(), self.bounds.right(), self.bounds.bottom())
+        return lb
+
+    def _blank(self) -> skia.Surface:
+        s = skia.Surface.MakeRasterN32Premul(max(1, int(math.ceil(self.bounds.width() * self.res))),
+                                             max(1, int(math.ceil(self.bounds.height() * self.res))))
+        s.getCanvas().clear(skia.ColorTRANSPARENT)
+        return s
+
+    def _to_pixels(self, c: skia.Canvas) -> None:
+        c.scale(self.res, self.res)
+        c.translate(-self.bounds.left(), -self.bounds.top())
+
+    def layer_image(self, index: Any, sizes_differ: int = 1) -> skia.Image | None:
+        """A layer parameter (1-based index in this comp, 0 = none) as an image on this effect's pixel grid.
+
+        Like AE, the other layer's transform is ignored: its content (with masks and effects) is
+        centred on this layer (sizes_differ 1) or stretched to it (2). The layer itself gives the
+        image before this effect's chain.
+        """
+        try:
+            idx = int(index or 0)
+        except (TypeError, ValueError):
+            return None
+        if idx <= 0:
+            return None
+        r = self.renderer
+        comp = r.ev._comp_of_layer.get(id(self.layer))
+        if comp is None or idx > len(comp.layers):
+            return None
+        other = comp.layers[idx - 1]
+        if other is self.layer:
+            return self.original
+        stack = r.__dict__.setdefault("_layer_param_stack", [])
+        if id(other) in stack:
+            return None
+        stack.append(id(other))
+        try:
+            img, origin, res = r.render_layer_offscreen(other, self.t, self.res, skia.Matrix())
+        finally:
+            stack.pop()
+        if img is None:
+            return None
+        mine, theirs = self.layer_rect(), effect_rect(r, other, self.t)
+        s = self._blank()
+        c = s.getCanvas()
+        self._to_pixels(c)
+        if int(sizes_differ or 1) == 2 and theirs.width() > 0 and theirs.height() > 0:
+            c.translate(mine.left(), mine.top())
+            c.scale(mine.width() / theirs.width(), mine.height() / theirs.height())
+            c.translate(-theirs.left(), -theirs.top())
+        else:
+            c.translate(mine.centerX() - theirs.centerX(), mine.centerY() - theirs.centerY())
+        c.drawImageRect(img, skia.Rect.MakeXYWH(origin[0], origin[1], img.width() / res, img.height() / res),
+                        skia.SamplingOptions(skia.FilterMode.kLinear), skia.Paint(AntiAlias=True))
+        return s.makeImageSnapshot()
+
+    def content_at(self, t: float) -> skia.Image:
+        """The layer's content (no masks or effects) at comp time t on this effect's pixel grid."""
+        s = self._blank()
+        c = s.getCanvas()
+        self._to_pixels(c)
+        self.renderer.draw_content(c, self.layer, t, self.res)
+        return s.makeImageSnapshot()
+
+
+def _is_vector_layer(layer: Any) -> bool:
+    return type(layer).__name__ in ("ShapeLayer", "TextLayer")
+
+
+def effect_rect(r: Any, layer: Any, t: float) -> skia.Rect:
+    """The layer rectangle effects work in. Shape and text layers count as comp-sized, centred on
+    the layer origin (that is where AE puts their effect points and layer parameters)."""
+    if _is_vector_layer(layer):
+        comp = r.ev._comp_of_layer.get(id(layer), r.mogrt.main_comp)
+        return skia.Rect.MakeXYWH(-comp.width / 2, -comp.height / 2, comp.width, comp.height)
+    return r.layer_content_bounds(layer, t)
+
+
+_SPATIAL = {"TwoD_SPATIAL", "ThreeD_SPATIAL"}
+
 
 def _params(r: Any, effect: Any, t: float) -> dict[str, Any]:
-    """Effect parameters keyed by index suffix ("0001") and by display name (first one wins)."""
+    """Effect parameters keyed by index suffix ("0001") and by display name (first one wins).
+
+    Effect points are returned in layer coordinates."""
     out = {}
+    shift = None
     for p in effect:
         if hasattr(p, "keyframes"):
             key = p.match_name.split("-")[-1]
-            out[key] = r.ev.value(p, t)
+            v = r.ev.value(p, t)
+            if (isinstance(v, list) and 2 <= len(v) <= 3 and all(isinstance(x, (int, float)) for x in v)
+                    and max(abs(x) for x in v[:2]) > 20000):
+                # untouched default points (layer centre) are stored at 100x
+                v = [x / 100 for x in v]
+            if isinstance(v, list) and getattr(getattr(p, "property_value_type", None), "name", "") in _SPATIAL:
+                if shift is None:
+                    from ..evaluator import owning_layer
+
+                    lay = owning_layer(effect)
+                    rect = effect_rect(r, lay, t) if _is_vector_layer(lay) else None
+                    shift = (rect.left(), rect.top()) if rect is not None else (0.0, 0.0)
+                if shift != (0.0, 0.0):
+                    v = [v[0] + shift[0], v[1] + shift[1]] + list(v[2:])
+            out[key] = v
             if p.name and p.name not in out:
                 out[p.name] = out[key]
     return out
@@ -338,13 +444,169 @@ def apply_styles(ctx: EffectContext, img: skia.Image) -> skia.Image:
                     [skia.Point(cx - dx * length / 2, cy - dy * length / 2), skia.Point(cx + dx * length / 2, cy + dy * length / 2)], cols, pos)
             c.drawRect(skia.Rect.MakeWH(img.width(), img.height()),
                        skia.Paint(Shader=shader, Alphaf=op, BlendMode=skia.BlendMode.kSrcATop))
-        elif kind not in ("dropShadow", "frameFX", "outerGlow"):
+        elif kind not in ("dropShadow", "frameFX", "outerGlow", "innerShadow", "innerGlow", "bevelEmboss"):
             if kind not in _warned:
                 _warned.add(kind)
                 import sys
 
                 print(f"WARNUNG: Ebenenstil '{g.name}' wird noch nicht unterstützt", file=sys.stderr)
-    return s.makeImageSnapshot()
+    inner = [(g.match_name.split("/")[0], _style_params(r, g, ctx.t)) for g in active_styles(ctx.layer)]
+    inner = [(k, p) for k, p in inner if k in ("innerShadow", "innerGlow", "bevelEmboss")]
+    if not inner:
+        return s.makeImageSnapshot()
+    base = s.makeImageSnapshot()
+    alpha = original.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType,
+                             alphaType=skia.AlphaType.kPremul_AlphaType)[..., 3].astype(np.float32) / 255.0
+    out = base.toarray(colorType=skia.ColorType.kRGBA_8888_ColorType,
+                       alphaType=skia.AlphaType.kPremul_AlphaType).astype(np.float32) / 255.0
+    for kind, p in inner:
+        if kind == "innerShadow":
+            ang = math.radians(float(p.get("localLightingAngle", 120)))
+            dist = float(p.get("distance", 5)) * res
+            size = float(p.get("blur", 5)) * res
+            inv = _shift_fill(1.0 - alpha, -math.cos(ang) * dist, math.sin(ang) * dist, 1.0)
+            inv = _choke_blur(inv, size, float(p.get("chokeMatte", 0)) / 100.0)
+            out = _blend_over(out, inv * alpha, p.get("color", [0, 0, 0, 1]), float(p.get("opacity", 75)) / 100,
+                              int(p.get("mode2", 5)))
+        elif kind == "innerGlow":
+            size = float(p.get("blur", 5)) * res
+            edge = _choke_blur(1.0 - alpha, size, float(p.get("chokeMatte", 0)) / 100.0, fill=1.0)
+            glow = edge if int(p.get("innerGlowSource", 2)) == 2 else 1.0 - edge
+            out = _blend_over(out, glow * alpha, p.get("color", [1, 1, 0.75, 1]), float(p.get("opacity", 75)) / 100,
+                              int(p.get("mode2", 11)))
+        elif kind == "bevelEmboss":
+            out = _bevel(out, alpha, p, res)
+    out = (np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8)
+    return skia.Image.fromarray(np.ascontiguousarray(out), colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                alphaType=skia.AlphaType.kPremul_AlphaType)
+
+
+# layer style blend modes (mode2 / highlightMode / shadowMode)
+_STYLE_BLEND = {1: "normal", 4: "darken", 5: "multiply", 10: "lighten", 11: "screen", 12: "dodge", 13: "add", 15: "overlay"}
+
+
+def _box(a: np.ndarray, r: int, axis: int) -> np.ndarray:
+    if r <= 0:
+        return a
+    pad = [(0, 0), (0, 0)]
+    pad[axis] = (r + 1, r)
+    c = np.cumsum(np.pad(a, pad, mode="edge"), axis=axis, dtype=np.float64)
+    n = a.shape[axis]
+    hi = np.take(c, np.arange(2 * r + 1, 2 * r + 1 + n), axis=axis)
+    lo = np.take(c, np.arange(0, n), axis=axis)
+    return ((hi - lo) / (2 * r + 1)).astype(np.float32)
+
+
+def _gauss(a: np.ndarray, sigma: float, fill: float = 0.0) -> np.ndarray:
+    """Gaussian blur (three box passes) of a single channel; outside the image counts as `fill`."""
+    if sigma <= 0.05:
+        return a
+    r = max(1, int(round(math.sqrt(12 * sigma * sigma / 3 + 1) / 2)))
+    pad = 3 * r + 1
+    src = np.pad(a.astype(np.float32), pad, constant_values=fill)
+    for _ in range(3):
+        src = _box(_box(src, r, 0), r, 1)
+    return src[pad:-pad, pad:-pad]
+
+
+def _shift_fill(a: np.ndarray, dx: float, dy: float, fill: float) -> np.ndarray:
+    ix, iy = int(round(dx)), int(round(dy))
+    out = np.full_like(a, fill)
+    h, w = a.shape
+    xs, xd = (0, ix) if ix >= 0 else (-ix, 0)
+    ys, yd = (0, iy) if iy >= 0 else (-iy, 0)
+    cw, ch = w - abs(ix), h - abs(iy)
+    if cw > 0 and ch > 0:
+        out[yd:yd + ch, xd:xd + cw] = a[ys:ys + ch, xs:xs + cw]
+    return out
+
+
+def _choke_blur(a: np.ndarray, size: float, choke: float, fill: float = 1.0) -> np.ndarray:
+    """PS-style size/choke: the first `choke` part of the size spreads the matte, the rest blurs it."""
+    if size <= 0.05:
+        return a
+    spread = size * max(0.0, min(1.0, choke))
+    if spread > 0.5:
+        a = _gauss(a, spread / 2, fill)
+        a = np.clip(a * 2, 0, 1)
+    return _gauss(a, max(0.0, size - spread) / 2.5, fill)
+
+
+def _blend_over(out: np.ndarray, cover: np.ndarray, col, opacity: float, mode: int) -> np.ndarray:
+    """Composite a colour with coverage `cover` (inside the layer) onto premultiplied `out`."""
+    a = np.clip(cover * opacity, 0, 1)[..., None]
+    da = out[..., 3:4]
+    dst = np.where(da > 1e-6, out[..., :3] / np.maximum(da, 1e-6), 0.0)
+    c = np.array(list(col)[:3], np.float32)
+    m = _STYLE_BLEND.get(mode, "normal")
+    if m == "multiply":
+        res = dst * c
+    elif m == "screen":
+        res = 1 - (1 - dst) * (1 - c)
+    elif m == "add":
+        res = np.minimum(dst + c, 1)
+    elif m == "darken":
+        res = np.minimum(dst, c)
+    elif m == "lighten":
+        res = np.maximum(dst, c)
+    elif m == "dodge":
+        res = np.minimum(dst / np.maximum(1 - c, 1e-3), 1)
+    elif m == "overlay":
+        res = np.where(dst < 0.5, 2 * dst * c, 1 - 2 * (1 - dst) * (1 - c))
+    else:
+        res = np.broadcast_to(c, dst.shape)
+    new = dst * (1 - a) + res * a
+    out = out.copy()
+    out[..., :3] = new * da
+    return out
+
+
+def _bevel(out: np.ndarray, alpha: np.ndarray, p: dict, res: float) -> np.ndarray:
+    size = float(p.get("blur", 5)) * res
+    if size <= 0.05:
+        return out  # AE draws nothing at size 0
+    # only the area around the layer's pixels can change: work on that crop (most of the image is empty)
+    ys, xs = np.nonzero(alpha > 0)
+    if len(ys) == 0:
+        return out
+    m = int(2 * size + float(p.get("softness", 0)) * res + 4)
+    y0, y1 = max(0, ys.min() - m), min(alpha.shape[0], ys.max() + m + 1)
+    x0, x1 = max(0, xs.min() - m), min(alpha.shape[1], xs.max() + m + 1)
+    if (y1 - y0) * (x1 - x0) < alpha.size:
+        out = out.copy()
+        out[y0:y1, x0:x1] = _bevel_crop(out[y0:y1, x0:x1], alpha[y0:y1, x0:x1], p, res, size)
+        return out
+    return _bevel_crop(out, alpha, p, res, size)
+
+
+def _bevel_crop(out: np.ndarray, alpha: np.ndarray, p: dict, res: float, size: float) -> np.ndarray:
+    style = int(p.get("bevelStyle", 2))  # 1 outer, 2 inner, 3 emboss, 4 pillow, 5 stroke
+    depth = float(p.get("strengthRatio", 100)) / 100.0
+    up = int(p.get("bevelDirection", 1)) == 1
+    soft = float(p.get("softness", 0)) * res
+    ang = math.radians(float(p.get("localLightingAngle", 120)))
+    alt = math.radians(float(p.get("localLightingAltitude", 30)))
+    h = _gauss(alpha, size / 2)
+    if style == 4:
+        h = np.abs(h - 0.5)
+    gy, gx = np.gradient(h)
+    k = depth * size
+    nx, ny = -gx * k, -gy * k
+    if not up:
+        nx, ny = -nx, -ny
+    lx, ly, lz = math.cos(ang) * math.cos(alt), -math.sin(ang) * math.cos(alt), math.sin(alt)
+    shade = (nx * lx + ny * ly + lz) / np.sqrt(nx * nx + ny * ny + 1) - lz
+    if soft > 0.05:
+        shade = _gauss(shade, soft / 2)
+    # the shading only tints the layer's own pixels (outer bevel / emboss outside the layer are not drawn)
+    region = alpha if style in (2, 4, 5) else (1 - alpha if style == 1 else np.ones_like(alpha))
+    hi = np.clip(shade, 0, None) * 2 * region
+    lo = np.clip(-shade, 0, None) * 2 * region
+    out = _blend_over(out, hi, p.get("highlightColor", [1, 1, 1, 1]), float(p.get("highlightOpacity", 75)) / 100,
+                      int(p.get("highlightMode", 11)))
+    out = _blend_over(out, lo, p.get("shadowColor", [0, 0, 0, 1]), float(p.get("shadowOpacity", 75)) / 100,
+                      int(p.get("shadowMode", 5)))
+    return out
 
 
 def ghostscript_bin() -> str | None:
