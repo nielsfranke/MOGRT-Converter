@@ -42,7 +42,7 @@ Der MOGRT Converter liest die Vorlage direkt und rendert sie mit einem eigenen R
 
 ### macOS
 
-1. [`MOGRT-Converter-0.6.0-macOS-arm64.dmg`](https://github.com/nielsfranke/MOGRT-Converter/releases/latest) herunterladen (Apple Silicon).
+1. [`MOGRT-Converter-0.6.1-macOS-arm64.dmg`](https://github.com/nielsfranke/MOGRT-Converter/releases/latest) herunterladen (Apple Silicon).
 2. DMG öffnen und **MOGRT Converter** in den Ordner *Programme* ziehen.
 3. Beim ersten Start: Rechtsklick auf die App → **Öffnen**. Die App ist nicht bei Apple notarisiert.
 
