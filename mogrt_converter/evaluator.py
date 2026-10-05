@@ -515,7 +515,8 @@ class Evaluator:
                 p = obj.property("ADBE Time Remapping")
                 return json.dumps({"t": "r", "r": self._ref(p, "prop")})
             if name == "marker":
-                return self._val(None)
+                p = obj.property("ADBE Marker")
+                return json.dumps({"t": "r", "r": self._ref(p, "prop")}) if p is not None else self._val(None)
             p = find_child(obj, name)
             if p is not None:
                 return self._node(p, t)
@@ -682,14 +683,23 @@ class Evaluator:
             return self._val((b - a) / 0.002)
         if name == "key":
             k = obj.keyframes[int(args[0]) - 1]
-            return self._val({"time": k.time, "value": self._to_js(k.value), "index": int(args[0])})
+            return self._val(self._key(k, int(args[0])))
         if name == "nearestKey":
             ks = obj.keyframes
             if not ks:
                 return self._val(None)
             i, k = min(enumerate(ks), key=lambda e: abs(e[1].time - float(args[0])))
-            return self._val({"time": k.time, "value": self._to_js(k.value), "index": i + 1})
+            return self._val(self._key(k, i + 1))
         return self._val(None)
+
+    def _key(self, k: Any, index: int) -> dict:
+        out = {"time": k.time, "value": self._to_js(k.value), "index": index}
+        v = k.value
+        if type(v).__name__ == "MarkerValue":  # marker.key(i).comment, .duration, .parameters …
+            out.update({"comment": v.comment or "", "duration": v.duration or 0, "chapter": v.chapter or "",
+                        "url": v.url or "", "frameTarget": v.frame_target or "", "cuePointName": v.cue_point_name or "",
+                        "parameters": dict(v.params or {})})
+        return out
 
     def _js_posterize(self, t: float) -> str:
         """posterizeTime(): the rest of the expression (other properties too) runs at time t."""
