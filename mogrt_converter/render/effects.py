@@ -165,8 +165,14 @@ def padding(r: Any, effect: Any, t: float) -> float:
     p = _params(r, effect, t)
     if mn in REGISTRY:
         pad_fn = REGISTRY[mn][1]
+        if pad_fn is None:
+            return 0.0
         try:
-            return float(pad_fn(p)) if pad_fn else 0.0
+            if pad_fn.__code__.co_argcount >= 2:  # pad functions may also take the layer's content rect
+                from ..evaluator import owning_layer
+
+                return float(pad_fn(p, r.layer_content_bounds(owning_layer(effect), t)))
+            return float(pad_fn(p))
         except Exception:
             return 0.0
     if mn == "ADBE Drop Shadow":

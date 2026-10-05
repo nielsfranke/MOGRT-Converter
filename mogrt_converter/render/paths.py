@@ -313,9 +313,55 @@ def offset(geo: Geo, amount: float, join: int, miter: float) -> Geo:
     paint.setStrokeMiter(miter)
     stroked = skia.Path()
     paint.getFillPath(p, stroked)
+    # on a self-intersecting path (a figure eight) the stroke bands of loops running in opposite
+    # directions cancel where they overlap (winding +1 - 1); adding each segment's own stroke closes
+    # those holes (a union never cancels)
+    builder = skia.OpBuilder()
+    builder.add(stroked, skia.PathOp.kUnion_PathOp)
+    for seg in _segments(p):
+        piece = skia.Path()
+        paint.getFillPath(seg, piece)
+        builder.add(piece, skia.PathOp.kUnion_PathOp)
+    stroked = builder.resolve() or stroked
     op = skia.PathOp.kUnion_PathOp if amount > 0 else skia.PathOp.kDifference_PathOp
     r = skia.Op(p, stroked, op)
     return Geo(path=r if r is not None else p)
+
+
+def _segments(p: skia.Path) -> list[skia.Path]:
+    """Every line/curve segment of a path as its own open path."""
+    out = []
+    start = last = None
+    it = skia.Path.Iter(p, False)
+    while True:
+        verb, pts = it.next()
+        if verb == skia.Path.Verb.kDone_Verb:
+            break
+        seg = skia.Path()
+        if verb == skia.Path.Verb.kMove_Verb:
+            start = last = pts[0]
+            continue
+        if verb == skia.Path.Verb.kClose_Verb:
+            if last is not None and start is not None and (last.x(), last.y()) != (start.x(), start.y()):
+                seg.moveTo(last)
+                seg.lineTo(start)
+                out.append(seg)
+            last = start
+            continue
+        seg.moveTo(pts[0])
+        if verb == skia.Path.Verb.kLine_Verb:
+            seg.lineTo(pts[1])
+        elif verb == skia.Path.Verb.kQuad_Verb:
+            seg.quadTo(pts[1], pts[2])
+        elif verb == skia.Path.Verb.kConic_Verb:
+            seg.conicTo(pts[1], pts[2], it.conicWeight())
+        elif verb == skia.Path.Verb.kCubic_Verb:
+            seg.cubicTo(pts[1], pts[2], pts[3])
+        else:
+            continue
+        out.append(seg)
+        last = pts[-1]
+    return out
 
 
 def pucker_bloat(geo: Geo, amount: float) -> Geo:

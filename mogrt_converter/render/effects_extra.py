@@ -73,38 +73,45 @@ def box_blur(ctx, p, img):
 
 # --------------------------------------------------------------------------- transform
 
-def _geometry_pad(p):
+def _geometry_matrix(p) -> skia.Matrix:
+    """The Transform effect in layer coordinates."""
     a = p.get("Anchor Point", [0, 0])
     pos = p.get("Position", a)
-    sc = max(float(p.get("Scale Height", 100) or 100), float(p.get("Scale Width", 100) or 100), 100) / 100
-    return math.hypot(pos[0] - a[0], pos[1] - a[1]) + 400 * (sc - 1) + 20
+    sh = float(p.get("Scale Height", 100))
+    sw = sh if bool(p.get("Uniform Scale", 1)) else float(p.get("Scale Width", 100))
+    skew, skew_axis = float(p.get("Skew", 0)), float(p.get("Skew Axis", 0))
+    m = skia.Matrix()
+    m.preTranslate(pos[0], pos[1])
+    m.preRotate(float(p.get("Rotation", 0)))
+    if skew:
+        # AE skews along the axis: at axis 0 horizontal edges tilt (negative = rising to the right) and
+        # vertical edges stay upright
+        m.preRotate(skew_axis)
+        m.preConcat(skia.Matrix.MakeAll(1, 0, 0, math.tan(math.radians(skew)), 1, 0, 0, 0, 1))
+        m.preRotate(-skew_axis)
+    m.preScale(sw / 100.0, sh / 100.0)
+    m.preTranslate(-a[0], -a[1])
+    return m
+
+
+def _geometry_pad(p, rect):
+    # how far the transformed content reaches beyond its own rect (rotation and skew included)
+    out = _geometry_matrix(p).mapRect(rect)
+    return max(rect.left() - out.left(), rect.top() - out.top(), out.right() - rect.right(),
+               out.bottom() - rect.bottom(), 0) + 20
 
 
 @effect("ADBE Geometry2", pad=_geometry_pad)
 def transform(ctx, p, img):
-    a = p.get("Anchor Point", [0, 0])
-    pos = p.get("Position", a)
-    uniform = bool(p.get("Uniform Scale", 1))
-    sh = float(p.get("Scale Height", 100))
-    sw = sh if uniform else float(p.get("Scale Width", 100))
-    skew = float(p.get("Skew", 0))
-    skew_axis = float(p.get("Skew Axis", 0))
-    rot = float(p.get("Rotation", 0))
     op = float(p.get("Opacity", 100)) / 100.0
-    m = skia.Matrix()
-    px, py = _to_px(ctx, pos)
-    ax, ay = _to_px(ctx, a)
-    m.preTranslate(px, py)
-    m.preRotate(rot)
-    if skew:
-        m.preRotate(skew_axis)
-        m.preConcat(skia.Matrix.MakeAll(1, -math.tan(math.radians(skew)), 0, 0, 1, 0, 0, 0, 1))
-        m.preRotate(-skew_axis)
-    m.preScale(sw / 100.0, sh / 100.0)
-    m.preTranslate(-ax, -ay)
     s = _surface(img)
     c = s.getCanvas()
-    c.concat(m)
+    # pixels -> layer coordinates, transform, back to pixels
+    c.scale(ctx.res, ctx.res)
+    c.translate(-ctx.bounds.left(), -ctx.bounds.top())
+    c.concat(_geometry_matrix(p))
+    c.translate(ctx.bounds.left(), ctx.bounds.top())
+    c.scale(1 / ctx.res, 1 / ctx.res)
     c.drawImage(img, 0, 0, skia.SamplingOptions(skia.FilterMode.kLinear, skia.MipmapMode.kLinear), skia.Paint(Alphaf=op))
     return s.makeImageSnapshot()
 

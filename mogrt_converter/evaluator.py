@@ -36,6 +36,11 @@ def is_synthetic(p: Any) -> bool:
     return bool(tdsb is not None and getattr(tdsb, "synthetic", False))
 
 
+def _first_line(e: Exception) -> str:
+    """QuickJS errors carry a JS stack trace after the message."""
+    return (str(e).splitlines() or [""])[0]
+
+
 def owning_layer(p: Any) -> Any:
     while p is not None and type(p).__name__ not in ("AVLayer", "ShapeLayer", "TextLayer", "CameraLayer", "LightLayer", "Layer"):
         p = p.parent_property
@@ -172,8 +177,10 @@ var __layerNames = {effect:1, content:1, sourceRectAtTime:1, transform:1, text:1
   inPoint:1, outPoint:1, startTime:1, position:1, scale:1, rotation:1, anchorPoint:1, opacity:1,
   toComp:1, fromComp:1, toWorld:1, fromWorld:1, width:1, height:1, parent:1, hasParent:1, marker:1,
   timeRemap:1, source:1, sourceTime:1, enabled:1, active:1, audioActive:1};
-function __run(id, t, vjson, lref, cref, pref, fd) {
+function __run(id, t, vjson, lref, cref, pref, fd, xjson) {
   var time = t;
+  var __x = xjson ? JSON.parse(xjson) : {};
+  var textIndex = __x.textIndex, textTotal = __x.textTotal, selectorValue = __x.selectorValue;
   var value = JSON.parse(vjson);
   var thisLayer = __proxy(JSON.parse(lref));
   var thisComp = __proxy(JSON.parse(cref));
@@ -380,7 +387,7 @@ class Evaluator:
                 self.errors[id(prop)] = (prop, str(e))
                 layer = owning_layer(prop)
                 print(
-                    f"WARNUNG: Expression auf '{getattr(layer, 'name', '?')}' / '{prop.name}' fehlgeschlagen: {e}",
+                    f"WARNUNG: Expression auf '{getattr(layer, 'name', '?')}' / '{prop.name}' fehlgeschlagen: {_first_line(e)}",
                     file=sys.stderr,
                 )
             finally:
@@ -435,7 +442,24 @@ class Evaluator:
             return float(res)
         return pre
 
-    def _run_expression(self, prop: Any, t: float, pre: Any) -> Any:
+    def value_with(self, prop: Any, t: float, extra: dict[str, Any]) -> Any:
+        """Value with extra expression variables (textIndex … for expression selectors); not cached."""
+        v = self.raw(prop, t)
+        if not (getattr(prop, "expression_enabled", False) and prop.expression) or id(prop) in self._failed:
+            return v
+        self._stack.append((prop, t))
+        try:
+            return self._run_expression(prop, t, v, extra)
+        except Exception as e:
+            self._failed.add(id(prop))
+            self.errors[id(prop)] = (prop, str(e))
+            print(f"WARNUNG: Expression auf '{getattr(owning_layer(prop), 'name', '?')}' / '{prop.name}' fehlgeschlagen: {_first_line(e)}",
+                  file=sys.stderr)
+            return v
+        finally:
+            self._stack.pop()
+
+    def _run_expression(self, prop: Any, t: float, pre: Any, extra: dict[str, Any] | None = None) -> Any:
         code_id = self._codes.get(id(prop))
         if code_id is None:
             code_id = len(self._codes) + 1
@@ -445,7 +469,7 @@ class Evaluator:
         layer = owning_layer(prop)
         comp = self._comp_of_layer.get(id(layer), self.mogrt.main_comp)
         res = self.js.eval(
-            "__run({}, {!r}, {}, {}, {}, {}, {!r})".format(
+            "__run({}, {!r}, {}, {}, {}, {}, {!r}, {})".format(
                 code_id,
                 float(t),
                 json.dumps(json.dumps(self._to_js(pre))),
@@ -453,6 +477,7 @@ class Evaluator:
                 json.dumps(json.dumps(self._ref(comp, "comp"))),
                 json.dumps(json.dumps(self._ref(prop, "prop"))),
                 float(comp.frame_duration),
+                json.dumps(json.dumps(extra or {})),
             )
         )
         return self._from_js(prop, json.loads(res), pre)

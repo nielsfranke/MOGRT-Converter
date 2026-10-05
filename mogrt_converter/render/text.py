@@ -95,6 +95,7 @@ def layout_text(tv: TextValue, char_tracking: list[float] | None = None) -> Text
     tracking = float(getattr(doc, "tracking", 0) or 0) / 1000.0 * size
     hscale = float(getattr(doc, "horizontal_scale", 1.0) or 1.0)
     leading = size * AUTO_LEADING if getattr(doc, "auto_leading", False) else float(doc.leading or size * AUTO_LEADING)
+    shift = float(getattr(doc, "baseline_shift", 0) or 0)  # positive raises the text
     just = doc.justification
     box = bool(getattr(doc, "box_text", False)) and doc.box_text_size is not None
 
@@ -146,6 +147,8 @@ def layout_text(tv: TextValue, char_tracking: list[float] | None = None) -> Text
     word_idx = 0
     gi = 0
     for li, line in enumerate(lines):
+        if box and y > by + float(doc.box_text_size[1]) + 1e-3:
+            break  # like AE, paragraph text that overflows the box is hidden
         visible = line
         while visible and visible[-1][3] == " ":
             visible = visible[:-1]
@@ -164,7 +167,7 @@ def layout_text(tv: TextValue, char_tracking: list[float] | None = None) -> Text
             elif prev_space:
                 word_idx += 1
                 prev_space = False
-            out.glyphs.append(Glyph(gid, ch, x, y, adv, li, word_idx - 1, ci, fd, size))
+            out.glyphs.append(Glyph(gid, ch, x, y - shift, adv, li, word_idx - 1, ci, fd, size))
             x += adv
             gi += 1
         out.lines.append((start, gi))
@@ -215,8 +218,22 @@ def _selector_values(ev: Evaluator, sel: Any, t: float, units: list[int], total:
     """Evaluate one range selector for each unit index; returns a list of [0..1] amounts."""
     mn = sel.match_name
     adv = sel.property("ADBE Text Range Advanced") if mn == "ADBE Text Selector" else None
+    if mn == "ADBE Text Expressible Selector":
+        # the Amount expression runs once per unit (textIndex is 1-based)
+        prop = sel.property("ADBE Text Expressible Amount")
+        if prop is None:
+            return [1.0] * len(units)
+        cache: dict[int, float] = {}
+        out = []
+        for u in units:
+            if u not in cache:
+                v = ev.value_with(prop, t, {"textIndex": u + 1, "textTotal": total, "selectorValue": [100, 100, 100]})
+                v = v[0] if isinstance(v, (list, tuple)) else v
+                cache[u] = max(-1.0, min(1.0, float(v) / 100.0))
+            out.append(cache[u])
+        return out
     if mn != "ADBE Text Selector":
-        # wiggly / expression selectors not supported: fully selected
+        # wiggly selectors not supported: fully selected
         return [1.0] * len(units)
     s = _p(ev, sel, "ADBE Text Percent Start", t, 0.0)
     e = _p(ev, sel, "ADBE Text Percent End", t, 100.0)
@@ -331,7 +348,10 @@ def animate(ev: Evaluator, layer: Any, layout: TextLayout, t: float, tracking_on
             if not getattr(sel, "enabled", True):
                 continue
             adv = sel.property("ADBE Text Range Advanced") if sel.match_name == "ADBE Text Selector" else None
-            based = int(_p(ev, adv, "ADBE Text Range Type2", t, 1)) if adv else 1
+            if sel.match_name == "ADBE Text Expressible Selector":  # its "Based On" sits on the selector itself
+                based = int(_p(ev, sel, "ADBE Text Range Type2", t, 1))
+            else:
+                based = int(_p(ev, adv, "ADBE Text Range Type2", t, 1)) if adv else 1
             if based == 1:
                 units = [g.index for g in layout.glyphs]
                 total = text_len

@@ -299,3 +299,12 @@ def cc_threshold(ctx, p, img):
     blend = float(p.get("0004", 0)) / 100
     a[..., :3] = on[..., None] * (1 - blend) + a[..., :3] * blend
     return _img(a)
+
+
+@effect("ADBE Posterize")
+def posterize(ctx, p, img):
+    # 0001 Level: tonal levels per channel
+    n = max(2, int(round(float(p.get("0001", 6)))))
+    a = _arr(img)
+    a[..., :3] = np.round(a[..., :3] * (n - 1)) / (n - 1)
+    return _img(a)

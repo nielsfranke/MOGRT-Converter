@@ -138,7 +138,7 @@ def _look_at(eye: np.ndarray, target: np.ndarray) -> np.ndarray:
         return np.eye(3)
     f /= n
     up = np.array([0.0, -1.0, 0.0])
-    r = np.cross(up, f)
+    r = np.cross(f, up)  # right-handed with y down: looking along +z keeps x right and y down
     if np.linalg.norm(r) < 1e-9:
         r = np.array([1.0, 0, 0])
     r /= np.linalg.norm(r)
@@ -728,6 +728,11 @@ class Renderer:
                 t = math.floor(t * fps + 1e-6) / fps
         effects = [e for e in effects if e.match_name != "ADBE Posterize Time"]
         bounds = self.layer_content_bounds(layer, t)
+        src = getattr(layer, "source", None)
+        collapsed = getattr(layer, "collapse_transformation", False) and type(src).__name__ == "CompItem"
+        if collapsed:
+            # a collapsed precomp is not cropped to its comp frame
+            bounds = self._collapsed_bounds(src, self.source_time(layer, t), bounds)
         pad = sum(fx.padding(self, e, t) for e in effects) + fx.style_padding(self, layer, t)
         # effects may grow the layer beyond its bounds (shadows, glows, tiling) like in AE
         pad = min(pad, 4000.0)
@@ -745,7 +750,14 @@ class Renderer:
         c.clear(skia.ColorTRANSPARENT)
         c.scale(res, res)
         c.translate(-bounds.left(), -bounds.top())
-        self.draw_content(c, layer, t, scale)
+        if collapsed:
+            self._surfaces.append(surf)  # adjustment layers inside act on this surface
+            try:
+                self.draw_layers(c, src, self.source_time(layer, t), scale)
+            finally:
+                self._surfaces.pop()
+        else:
+            self.draw_content(c, layer, t, scale)
         if self._has_masks(layer):
             self._apply_masks(c, layer, t, bounds)
         img = surf.makeImageSnapshot()
@@ -755,6 +767,23 @@ class Renderer:
         if fx.active_styles(layer):
             img = fx.apply_styles(ctx, img)
         return img, (bounds.left(), bounds.top()), res
+
+    def _collapsed_bounds(self, comp: Any, t: float, frame: skia.Rect) -> skia.Rect:
+        """The comp frame plus whatever its (2D) layers draw outside it, limited to a few frame sizes."""
+        out = skia.Rect.MakeLTRB(frame.left(), frame.top(), frame.right(), frame.bottom())
+        for sub in comp.layers:
+            if not sub.enabled or not self.is_visual(sub) or not (sub.in_point <= t < sub.out_point):
+                continue
+            lb = self.layer_content_bounds(sub, t)
+            if lb.isEmpty():
+                continue
+            m = self.world_matrix(sub, t)
+            pts = [m @ np.array([x, y, 0.0, 1.0]) for x in (lb.left(), lb.right()) for y in (lb.top(), lb.bottom())]
+            out.join(skia.Rect.MakeLTRB(min(p[0] for p in pts), min(p[1] for p in pts),
+                                        max(p[0] for p in pts), max(p[1] for p in pts)))
+        w, h = frame.width(), frame.height()
+        out.intersect(skia.Rect.MakeLTRB(frame.left() - 2 * w, frame.top() - 2 * h, frame.right() + 2 * w, frame.bottom() + 2 * h))
+        return out
 
     def _apply_masks(self, c: skia.Canvas, layer: Any, t: float, bounds: skia.Rect) -> None:
         parade = self._prop(layer, "ADBE Mask Parade")

@@ -261,7 +261,8 @@ def cc_cylinder(ctx, p, img):
         normal = np.stack([pt[..., 0], np.zeros_like(theta), pt[..., 2]], axis=-1) / rad
         normal = normal @ m.T  # back to view space
         shade = ambient + diffuse * np.maximum(normal @ light, 0)
-        col[..., :3] *= np.clip(shade, 0, 2)[..., None]
+        # premultiplied: brightened colour must not exceed its alpha
+        col[..., :3] = np.minimum(col[..., :3] * np.clip(shade, 0, 2)[..., None], col[..., 3:4])
         col *= ok[..., None]
         out = col + out * (1 - col[..., 3:4])
     return _from_pre(out)
@@ -515,3 +516,93 @@ def card_wipe(ctx, p, img):
     pre = _pre(img)
     out = _lookup(ctx, pre, sx, sy) * inside[..., None]
     return _from_pre(np.where(in_rect[..., None], out, pre))
+
+
+# --------------------------------------------------------------------------- more CC / classic distortions
+
+@effect("CC Scale Wipe")
+def cc_scale_wipe(ctx, p, img):
+    # 0001 Stretch, 0002 Center, 0003 Direction (0 = up): beyond the line through Center the layer
+    # is stretched away from it
+    stretch = float(p.get("0001", 0))
+    if abs(stretch) < 0.01:
+        return img
+    c = _pt(p.get("0002"), [0, 0])
+    a = math.radians(float(p.get("0003", 0)))
+    dx, dy = math.sin(a), -math.cos(a)
+    lx, ly = _grid(ctx, img)
+    d = (lx - c[0]) * dx + (ly - c[1]) * dy
+    shrink = np.where(d > 0, d - d / (1 + stretch / 10.0), 0.0)
+    return _from_pre(_lookup(ctx, _pre(img), lx - dx * shrink, ly - dy * shrink))
+
+
+@effect("CC Tiler")
+def cc_tiler(ctx, p, img):
+    # 0001 Scale (1 = 100 %), 0002 Center, 0003 Blend w. Original: the scaled layer repeated around Center
+    s = max(0.01, float(p.get("0001", 1)))
+    r = ctx.layer_rect()
+    c = _pt(p.get("0002"), [r.centerX(), r.centerY()])
+    lx, ly = _grid(ctx, img)
+    w, h = r.width() * s, r.height() * s
+    u = np.mod(lx - c[0] + w / 2, w) / s + r.left()
+    v = np.mod(ly - c[1] + h / 2, h) / s + r.top()
+    out = _lookup(ctx, _pre(img), u, v)
+    blend = float(p.get("0003", 0)) / 100
+    return _from_pre(out * (1 - blend) + _pre(img) * blend if blend else out)
+
+
+@effect("CC Lens")
+def cc_lens(ctx, p, img):
+    # 0001 Center, 0002 Size (radius), 0003 Convergence: a fisheye inside the circle, nothing outside
+    c = _pt(p.get("0001"), [0, 0])
+    rad = max(1e-3, float(p.get("0002", 50)))
+    conv = float(p.get("0003", 0)) / 100
+    lx, ly = _grid(ctx, img)
+    ox, oy = lx - c[0], ly - c[1]
+    rn = np.sqrt(ox * ox + oy * oy) / rad
+    k = np.where(rn > 1e-6, np.power(np.minimum(rn, 1), conv), 1.0)  # source radius / radius
+    out = _lookup(ctx, _pre(img), c[0] + ox * k, c[1] + oy * k)
+    return _from_pre(out * (rn <= 1)[..., None])
+
+
+@effect("ADBE Ripple")
+def ripple(ctx, p, img):
+    # 0001 Radius (% of the layer), 0002 Center, 0003 Type of Conversion, 0004 Wave Speed, 0005 Wave Width,
+    # 0006 Wave Height, 0007 Ripple Phase
+    height = float(p.get("0006", 20))
+    if abs(height) < 0.01:
+        return img
+    r = ctx.layer_rect()
+    c = _pt(p.get("0002"), [r.centerX(), r.centerY()])
+    radius = max(1e-3, float(p.get("0001", 20)) / 100 * max(r.width(), r.height()) / 2)
+    width = max(1e-3, float(p.get("0005", 20)))
+    phase = math.radians(float(p.get("0007", 0))) - float(p.get("0004", 1)) * ctx.t * 2 * math.pi
+    lx, ly = _grid(ctx, img)
+    ox, oy = lx - c[0], ly - c[1]
+    dist = np.sqrt(ox * ox + oy * oy)
+    fade = np.clip(1 - dist / radius, 0, 1)
+    disp = height / 4 * np.sin(dist / width * 2 * math.pi + phase) * fade
+    nx, ny = ox / np.maximum(dist, 1e-6), oy / np.maximum(dist, 1e-6)
+    return _from_pre(_lookup(ctx, _pre(img), lx - nx * disp, ly - ny * disp))
+
+
+@effect("CC Bender")
+def cc_bender(ctx, p, img):
+    # 0001 Amount, 0002 Style (1 bend, 2 marilyn, 3 sharp, 4 boxer), 0004 Top, 0005 Base: the layer bends
+    # sideways between Base (fixed) and Top
+    amount = float(p.get("0001", 0))
+    if abs(amount) < 0.01:
+        return img
+    style = int(float(p.get("0002", 1) or 1))
+    r = ctx.layer_rect()
+    top = _pt(p.get("0004"), [r.centerX(), r.top()])
+    base = _pt(p.get("0005"), [r.centerX(), r.bottom()])
+    ax, ay = top[0] - base[0], top[1] - base[1]
+    length = max(1e-3, math.hypot(ax, ay))
+    ux, uy = ax / length, ay / length  # along the axis
+    nx, ny = -uy, ux  # sideways
+    lx, ly = _grid(ctx, img)
+    s = np.clip(((lx - base[0]) * ux + (ly - base[1]) * uy) / length, 0, 1)
+    f = {2: np.sin(math.pi * s), 3: s, 4: np.sin(2 * math.pi * s)}.get(style, s * s)
+    d = amount / 100 * length * f
+    return _from_pre(_lookup(ctx, _pre(img), lx - nx * d, ly - ny * d))
