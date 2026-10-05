@@ -42,7 +42,7 @@ MOGRT Converter reads the template directly and renders it with its own renderer
 
 ### macOS
 
-1. Download [`MOGRT-Converter-0.6.2-macOS-arm64.dmg`](https://github.com/nielsfranke/MOGRT-Converter/releases/latest) (Apple Silicon).
+1. Download [`MOGRT-Converter-0.6.3-macOS-arm64.dmg`](https://github.com/nielsfranke/MOGRT-Converter/releases/latest) (Apple Silicon).
 2. Open the DMG and drag **MOGRT Converter** into *Applications*.
 3. On first launch: right-click the app → **Open**. The app is not notarised by Apple.
 

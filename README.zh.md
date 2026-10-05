@@ -42,7 +42,7 @@ MOGRT Converter 直接读取模板，并用自带的渲染器还原 After Effect
 
 ### macOS
 
-1. 下载 [`MOGRT-Converter-0.6.2-macOS-arm64.dmg`](https://github.com/nielsfranke/MOGRT-Converter/releases/latest)（Apple Silicon）。
+1. 下载 [`MOGRT-Converter-0.6.3-macOS-arm64.dmg`](https://github.com/nielsfranke/MOGRT-Converter/releases/latest)（Apple Silicon）。
 2. 打开 DMG，将 **MOGRT Converter** 拖入 *应用程序*。
 3. 首次启动：右键点击应用 → **打开**。该应用未经 Apple 公证。
 
