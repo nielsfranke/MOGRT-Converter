@@ -292,12 +292,15 @@ const api = async (url, body) => {
 let lib = [], cfg = {}, cur = null, values = {}, t = 0, playing = false, frameBusy = false, pending = false;
 const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 
-// ---------- language: German or English (system language, switchable at the bottom left)
+// ---------- language: German, English or Chinese (system language, switchable at the bottom left)
+const LANGS = ['de', 'en', 'zh'];
+const LANG_LABELS = { de: 'Deutsch', en: 'English', zh: '中文' };
 const LANG = (() => {
   const q = new URLSearchParams(location.search).get('lang');
-  if (q === 'de' || q === 'en') { try { localStorage.setItem('lang', JSON.stringify(q)); } catch {} return q; }
-  try { const s = JSON.parse(localStorage.getItem('lang')); if (s === 'de' || s === 'en') return s; } catch {}
-  return (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' : 'en';
+  if (LANGS.includes(q)) { try { localStorage.setItem('lang', JSON.stringify(q)); } catch {} return q; }
+  try { const s = JSON.parse(localStorage.getItem('lang')); if (LANGS.includes(s)) return s; } catch {}
+  const sys = (navigator.language || 'de').toLowerCase();
+  return sys.startsWith('de') ? 'de' : sys.startsWith('zh') ? 'zh' : 'en';
 })();
 const EN = {
   "Vorlagen": "Templates",
@@ -444,30 +447,179 @@ const EN = {
   "{0} Renderings in der Warteschlange": "{0} renders queued",
   "Stapel fehlgeschlagen: {0}": "Batch failed: {0}"
 };
+const ZH = {
+  "Vorlagen": "模板",
+  "Einzelne .mogrt-Dateien hinzufügen": "添加单个 .mogrt 文件",
+  "+ Datei": "+ 文件",
+  "Ordner zur Bibliothek hinzufügen": "将文件夹添加到素材库",
+  "+ Ordner": "+ 文件夹",
+  "Suchen": "搜索",
+  "Vorlagen durchsuchen": "搜索模板",
+  "Sortieren": "排序",
+  "Sortieren: Name": "排序：名称",
+  "Sortieren: Zuletzt geöffnet": "排序：最近打开",
+  "Sortieren: Neueste Dateien": "排序：最新文件",
+  "Sammlung anlegen, z. B. für einen Kunden": "新建合集，例如按客户分类",
+  "+ Sammlung": "+ 合集",
+  ".mogrt-Dateien hierher ziehen, um sie hinzuzufügen. Vorlagen auf eine Sammlung ziehen, um sie einzusortieren. Rechtsklick für mehr.": "将 .mogrt 文件拖到此处添加。拖动模板到合集上即可归类。右键查看更多。",
+  "Keine Vorlage geöffnet": "未打开模板",
+  "Wähle links eine Vorlage.": "请在左侧选择一个模板。",
+  "Du kannst Texte und Regler rechts anpassen und das Ergebnis als ProRes 4444 mit Alpha für Resolve rendern.": "你可以在右侧调整文字和控件，并将结果渲染为带 Alpha 通道的 ProRes 4444，供 Resolve 使用。",
+  "Vorschau": "预览",
+  "Abspielen": "播放",
+  "Pause": "暂停",
+  "Zeitposition": "时间位置",
+  "Vorausgerendert": "已预渲染",
+  "Hintergrund": "背景",
+  "Transparenz": "透明度",
+  "Schwarz": "黑色",
+  "Grau": "灰色",
+  "Weiß": "白色",
+  "Title-/Action-Safe": "标题/动作安全框",
+  "Regler": "控件",
+  "Zurücksetzen": "重置",
+  "Dateiname": "文件名",
+  "Format": "格式",
+  "ProRes 4444 mit Alpha": "ProRes 4444 带 Alpha",
+  "ProRes 4444 XQ mit Alpha": "ProRes 4444 XQ 带 Alpha",
+  "PNG in MOV (verlustfrei, Alpha)": "PNG 封装 MOV（无损，带 Alpha）",
+  "H.264 Vorschau (ohne Alpha)": "H.264 预览（无 Alpha）",
+  "Dauer": "时长",
+  "Sekunden (8,5), Timecode (00:00:08:12) oder Frames (200f)": "秒（8.5）、时间码（00:00:08:12）或帧（200f）",
+  "Originaldauer": "原始时长",
+  "Ziel": "输出",
+  "Zielordner wählen": "选择输出文件夹",
+  "Ordner öffnen": "打开文件夹",
+  "Rendern": "渲染",
+  "Mehrere Varianten auf einmal rendern": "一次渲染多个变体",
+  "Stapel …": "批量 …",
+  "Scripts für Workspace → Scripts in DaVinci Resolve anlegen": "为 DaVinci Resolve 的 工作区 → 脚本 菜单创建脚本",
+  "Resolve-Integration installieren": "安装 Resolve 集成",
+  "Stapel-Rendering": "批量渲染",
+  "+ Zeile": "+ 行",
+  "CSV importieren": "导入 CSV",
+  "CSV-Vorlage speichern": "保存 CSV 模板",
+  "Schließen": "关闭",
+  "Jede Zeile wird eine eigene Datei. Leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.": "每一行会生成一个独立文件。空白的单元格使用模板的默认值。可将 Excel 或 Numbers 表格以 CSV 格式导入：列名与控件名称相同，另可选填“文件名”和“时长”。",
+  "Ändern fehlgeschlagen: {0}": "更改失败：{0}",
+  "Noch keine Vorlagen. Füge oben einen Ordner oder einzelne Dateien hinzu – oder ziehe .mogrt-Dateien in dieses Fenster.": "还没有模板。请在上方添加文件夹或单个文件，或者将 .mogrt 文件拖入此窗口。",
+  "Leer – Vorlagen hierher ziehen oder per Rechtsklick hinzufügen.": "空 – 将模板拖到此处，或通过右键添加。",
+  "Einzelne Dateien": "单个文件",
+  "Keine .mogrt-Dateien in diesem Ordner.": "此文件夹中没有 .mogrt 文件。",
+  "Keine Treffer.": "没有匹配结果。",
+  "{0} entfernte Vorlagen wieder anzeigen": "重新显示 {0} 个已移除的模板",
+  "1 entfernte Vorlage wieder anzeigen": "重新显示 1 个已移除的模板",
+  "Umbenennen": "重命名",
+  "Sammlung löschen": "删除合集",
+  "Die Vorlagen selbst bleiben erhalten.": "模板本身会保留。",
+  "Im Finder zeigen": "在访达中显示",
+  "Ordner aus der Liste entfernen": "从列表中移除文件夹",
+  "Die Dateien auf der Festplatte bleiben erhalten.": "硬盘上的文件会保留。",
+  "Datei: {0}": "文件：{0}",
+  "Originalnamen verwenden": "使用原始名称",
+  "Zu Sammlung hinzufügen": "添加到合集",
+  "Neue Sammlung …": "新建合集 …",
+  "Neue Sammlung": "新建合集",
+  "Aus „{0}“ entfernen": "从“{0}”中移除",
+  "Aus der Liste entfernen": "从列表中移除",
+  "Die Datei bleibt auf der Festplatte.": "文件会保留在硬盘上。",
+  "Mehr": "更多",
+  "Vorlage konnte nicht geöffnet werden: {0}": "无法打开模板：{0}",
+  "{0} (Original)": "{0}（原始）",
+  "Fehlende Schrift: <b>{0}</b>. Die Vorschau nutzt eine Ersatzschrift. Freie Schriften lädt der Converter von Google Fonts, kommerzielle legst du selbst in den Font-Ordner.": "缺少字体：<b>{0}</b>。预览将使用替代字体。免费字体可由 Converter 从 Google Fonts 下载，商业字体请自行放入字体文件夹。",
+  "Von Google Fonts laden": "从 Google Fonts 下载",
+  "Font-Ordner öffnen": "打开字体文件夹",
+  "Lade …": "加载中 …",
+  "Geladen: {0}": "已下载：{0}",
+  " – nicht gefunden: {0}": " – 未找到：{0}",
+  "Nicht bei Google Fonts: {0}": "不在 Google Fonts：{0}",
+  "Laden fehlgeschlagen: {0}": "下载失败：{0}",
+  "Reglertyp „{0}“ wird noch nicht unterstützt.": "控件类型“{0}”尚不支持。",
+  "Standard": "默认",
+  "Auf Standardwert zurücksetzen": "重置为默认值",
+  "Bewegung": "运动",
+  "Position, Skalierung, Drehung und Deckkraft zurücksetzen": "重置位置、缩放、旋转和不透明度",
+  "Position X": "位置 X",
+  "Position Y": "位置 Y",
+  "Skalierung": "缩放",
+  "Drehung": "旋转",
+  "Deckkraft": "不透明度",
+  "Tipp: Die Grafik lässt sich in der Vorschau mit der Maus verschieben (Umschalttaste: nur senkrecht).": "提示：可在预览中用鼠标拖动图形（按住 Shift 键：仅垂直方向）。",
+  "Vorschau fehlgeschlagen: {0}": "预览失败：{0}",
+  "Ordnerauswahl fehlgeschlagen: {0}": "选择文件夹失败：{0}",
+  "Ordner mit .mogrt-Dateien (Pfad):": "含 .mogrt 文件的文件夹（路径）：",
+  "Ordner hinzugefügt.": "文件夹已添加。",
+  "Dateiauswahl fehlgeschlagen: {0}": "选择文件失败：{0}",
+  "Installiert. In Resolve: Workspace → Scripts ({0} Scripts).": "已安装。在 Resolve 中：工作区 → 脚本（{0} 个脚本）。",
+  "Installation fehlgeschlagen: {0}": "安装失败：{0}",
+  "Ghostscript fehlt – EPS-Logos nur als Vorschau.": "缺少 Ghostscript – EPS 标志仅供预览。",
+  "Nur .mogrt-Dateien können importiert werden.": "只能导入 .mogrt 文件。",
+  "{0} konnte nicht importiert werden: {1}": "无法导入 {0}：{1}",
+  "{0} Vorlagen importiert.": "已导入 {0} 个模板。",
+  "1 Vorlage importiert.": "已导入 1 个模板。",
+  "Gerendert: {0}": "已渲染：{0}",
+  "Rendern fehlgeschlagen: {0}": "渲染失败：{0}",
+  "wartet": "排队中",
+  "{0}/{1} Frames": "{0}/{1} 帧",
+  "startet …": "启动中 …",
+  "fertig": "完成",
+  "Fehler": "错误",
+  "abgebrochen": "已取消",
+  "Abbrechen": "取消",
+  "Ein- und Ausblendung bleiben bei geänderter Dauer erhalten.": "修改时长时，片头和片尾动画将保持不变。",
+  "Keine geschützten Bereiche – die Animation wird gedehnt.": "没有受保护区域 – 动画将被整体拉伸。",
+  "Geschützt: {0} · Rest wird angepasst.": "已保护：{0} · 其余部分将被调整。",
+  "Die ganze Animation wird gedehnt.": "整个动画将被拉伸。",
+  "Dauer nicht erkannt. Beispiele: 8, 8,5, 00:00:08:12, 200f": "无法识别时长。示例：8、8.5、00:00:08:12、200f",
+  "1 Zeile": "1 行",
+  "{0} Zeilen": "{0} 行",
+  "Ziel: {0}": "输出：{0}",
+  "1 Datei rendern": "渲染 1 个文件",
+  "{0} Dateien rendern": "渲染 {0} 个文件",
+  "automatisch": "自动",
+  "Dauer nicht erkannt": "无法识别时长",
+  "Diese Zeile in der Vorschau zeigen": "在预览中显示此行",
+  "Zeile duplizieren": "复制此行",
+  "Zeile löschen": "删除此行",
+  "Zeile {0} in der Vorschau – Fenster schließen, um sie anzusehen.": "第 {0} 行已在预览中 – 关闭窗口即可查看。",
+  "{0} Zeilen importiert": "已导入 {0} 行",
+  " – ignoriert: {0}": " – 已忽略：{0}",
+  "Import fehlgeschlagen: {0}": "导入失败：{0}",
+  "Gespeichert: {0}": "已保存：{0}",
+  "Speichern fehlgeschlagen: {0}": "保存失败：{0}",
+  "Stapel-Rendering – {0}": "批量渲染 – {0}",
+  "Zeile {0}": "第 {0} 行",
+  "{0} Renderings in der Warteschlange": "{0} 个渲染任务已排队",
+  "Stapel fehlgeschlagen: {0}": "批量处理失败：{0}",
+  "Sprache / Language": "语言 / Language"
+};
 // UI texts are written in German; L() translates them (placeholders {0}, {1} …)
+const TABLE = LANG === 'en' ? EN : LANG === 'zh' ? ZH : null;
 function L(text, ...args) {
-  const s = LANG === 'en' && EN[text] !== undefined ? EN[text] : text;
+  const s = TABLE && TABLE[text] !== undefined ? TABLE[text] : text;
   return args.length ? s.replace(/\{(\d)\}/g, (_, i) => args[i]) : s;
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 function translatePage() {
-  document.documentElement.lang = LANG;
-  if (LANG === 'de') return;
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : LANG;
+  if (!TABLE) return;
   const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let n; (n = walk.nextNode());) {
     const k = n.nodeValue.trim();
-    if (k && EN[k] !== undefined) n.nodeValue = n.nodeValue.replace(k, EN[k]);
+    if (k && TABLE[k] !== undefined) n.nodeValue = n.nodeValue.replace(k, TABLE[k]);
   }
   for (const el of document.querySelectorAll('[title],[placeholder],[aria-label],[alt]')) {
     for (const a of ['title', 'placeholder', 'aria-label', 'alt']) {
       const v = el.getAttribute(a);
-      if (v && EN[v] !== undefined) el.setAttribute(a, EN[v]);
+      if (v && TABLE[v] !== undefined) el.setAttribute(a, TABLE[v]);
     }
   }
 }
 translatePage();
-$('#langBtn').textContent = LANG === 'de' ? 'English' : 'Deutsch';
-$('#langBtn').onclick = () => { store.set('lang', LANG === 'de' ? 'en' : 'de'); location.reload(); };
+// the button offers the next language of the cycle
+const NEXT_LANG = () => LANGS[(LANGS.indexOf(LANG) + 1) % LANGS.length];
+$('#langBtn').textContent = LANG_LABELS[NEXT_LANG()];
+$('#langBtn').onclick = () => { store.set('lang', NEXT_LANG()); location.reload(); };
 
 function toast(msg) { const el = $('#toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => el.style.display = 'none', 3200); }
 
