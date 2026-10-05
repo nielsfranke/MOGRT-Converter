@@ -1,6 +1,6 @@
 [project]
 name = "mogrt-converter"
-version = "0.6.1"
+version = "0.6.2"
 description = "Render After Effects MOGRT templates without Adobe software"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE", "THIRD-PARTY-NOTICES.md"]
