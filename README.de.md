@@ -4,7 +4,7 @@
 
 <h1 align="center">MOGRT Converter</h1>
 
-<p align="center"><a href="README.md">English</a> · <b>Deutsch</b></p>
+<p align="center"><a href="README.md">English</a> · <b>Deutsch</b> · <a href="README.zh.md">简体中文</a></p>
 
 <p align="center">
   After-Effects-Vorlagen (<code>.mogrt</code>) ohne Adobe ausfüllen und rendern – als ProRes 4444 mit Alpha für DaVinci Resolve.
@@ -36,7 +36,7 @@ Der MOGRT Converter liest die Vorlage direkt und rendert sie mit einem eigenen R
 - **ProRes 4444 mit Alpha** (auch 4444 XQ, PNG-MOV oder H.264), Ton aus der Vorlage inklusive
 - **Resolve-Integration**: Clips per Script in einen Bin „MOGRTs“ im Media Pool holen
 - **Kommandozeile** für Stapelverarbeitung
-- **Deutsch und Englisch**: die Oberfläche folgt der Systemsprache, umschaltbar unten links
+- **Deutsch, Englisch und Chinesisch**: die Oberfläche folgt der Systemsprache, umschaltbar unten links
 
 ## Installation
 

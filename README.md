@@ -4,7 +4,7 @@
 
 <h1 align="center">MOGRT Converter</h1>
 
-<p align="center"><b>English</b> · <a href="README.de.md">Deutsch</a></p>
+<p align="center"><b>English</b> · <a href="README.de.md">Deutsch</a> · <a href="README.zh.md">简体中文</a></p>
 
 <p align="center">
   Fill in and render After Effects templates (<code>.mogrt</code>) without Adobe software – as ProRes 4444 with alpha for DaVinci Resolve.
@@ -36,7 +36,7 @@ MOGRT Converter reads the template directly and renders it with its own renderer
 - **ProRes 4444 with alpha** (also 4444 XQ, PNG-in-MOV or H.264), including the template's audio
 - **Resolve integration**: a script pulls new clips into a "MOGRTs" bin in the Media Pool
 - **Command line** for automation
-- **English and German**: the interface follows the system language and can be switched at the bottom left
+- **English, German and Chinese**: the interface follows the system language and can be switched at the bottom left
 
 ## Installation
 
@@ -123,7 +123,7 @@ uv venv -p 3.12 .venv && uv pip install -p .venv -e ".[build,dev]"
 .venv/bin/mogrt inspect template.mogrt # print layers, keyframes and expressions
 ```
 
-The code, comments and commit messages are in English; the app's texts are written in German and translated in `mogrt_converter/app/static/index.html` (`EN` table).
+The code, comments and commit messages are in English; the app's texts are written in German and translated in `mogrt_converter/app/static/index.html` (`EN` table for English, `ZH` table for Chinese).
 
 ### Test corpus
 
