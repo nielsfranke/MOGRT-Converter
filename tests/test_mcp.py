@@ -66,3 +66,25 @@ def test_render_batch(lib):
     assert [o.rsplit("/", 1)[-1] for o in outputs] == ["eins.mp4", "zwei.mp4"]
     assert outputs[0].startswith(str(lib / "out"))  # the app's render folder
     assert progress and progress[-1]["params"]["progress"] == progress[-1]["params"]["total"]
+
+
+def test_install_claude_desktop_keeps_other_servers(tmp_path, monkeypatch):
+    import pytest
+
+    from mogrt_converter import agent_skill
+
+    cfg = tmp_path / "Claude" / "claude_desktop_config.json"
+    monkeypatch.setattr(agent_skill, "claude_desktop_config_path", lambda: cfg)
+    monkeypatch.setattr(agent_skill, "skill_path", lambda root=None: tmp_path / "skills" / "SKILL.md")
+    assert agent_skill.setup_status()["claude_desktop"]["installed"] is False
+    cfg.parent.mkdir()
+    cfg.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}, "theme": "dark"}))
+    agent_skill.install_claude_desktop()
+    data = json.loads(cfg.read_text())
+    assert data["theme"] == "dark" and data["mcpServers"]["other"] == {"command": "x"}
+    assert data["mcpServers"]["mogrt-converter"]["args"][-1] == "mcp"
+    assert agent_skill.setup_status()["claude_desktop"]["installed"] is True
+    cfg.write_text("{ kaputt")
+    with pytest.raises(ValueError):
+        agent_skill.install_claude_desktop()
+    assert cfg.read_text() == "{ kaputt"  # never overwrite a config we cannot read

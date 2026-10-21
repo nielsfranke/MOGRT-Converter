@@ -72,7 +72,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .tpl[aria-current="true"] { background: var(--panel-2); border-color: var(--accent); }
 .tpl img { width: 64px; height: 36px; object-fit: contain; background: #0f1012; border-radius: 3px; }
 .tpl .n { font-size: 12px; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.lang { margin: -4px 12px 10px; font-size: 11px; text-align: right; }
+.lang { margin: -4px 12px 10px; font-size: 11px; display: flex; justify-content: space-between; gap: 8px; }
 .drop-hint { margin: 8px 12px 12px; padding: 10px; border: 1px dashed var(--line); border-radius: var(--radius-s); color: var(--muted); font-size: 11.5px; line-height: 1.4; }
 body.dragging .drop-hint { border-color: var(--accent); color: var(--text); }
 
@@ -179,6 +179,27 @@ input[type=range].scrub { width: 100%; accent-color: var(--accent); display: blo
 .btn-row .render-btn { flex: 1; margin-top: 0; }
 .secondary-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 10px 12px; cursor: pointer; font-weight: 600; white-space: nowrap; }
 .secondary-btn:hover { border-color: #4a4e56; }
+/* "Mit KI arbeiten" dialog */
+.ai-sheet { width: min(780px, calc(100vw - 48px)); grid-template-rows: auto 1fr; }
+.ai-body { overflow: auto; padding: 4px 18px 18px; line-height: 1.5; }
+.ai-body h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 8px; }
+.ai-card { border: 1px solid var(--line); border-radius: var(--radius-m); padding: 12px 14px; margin-bottom: 8px; background: var(--bg); }
+.ai-card h4 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+.ai-card p { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ai-actions .secondary-btn { padding: 6px 10px; font-weight: 500; }
+.ai-actions .primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.ai-status { font-size: 12px; color: var(--muted); }
+.ai-status.ok { color: var(--ok); }
+.ai-status.warn { color: var(--warn); }
+.ai-code { display: block; margin-top: 8px; font: 11.5px ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 8px; overflow-x: auto; white-space: pre; }
+.ai-prompts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ai-prompts li { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: var(--radius-m); padding: 8px 10px; background: var(--bg); }
+.ai-prompts li span { flex: 1; }
+.ai-tips { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+.ai-tips li { margin-bottom: 4px; }
+.ai-note { color: var(--muted); font-size: 11.5px; border-left: 2px solid var(--line); padding-left: 10px; margin-top: 14px; }
+
 /* batch dialog */
 .modal { position: fixed; inset: 0; background: rgba(10, 11, 13, .55); display: grid; place-items: center; z-index: 20; }
 .modal[hidden] { display: none; }
@@ -218,7 +239,7 @@ table.batch .acts button:hover { color: var(--text); }
     </div>
     <div class="lib" id="lib"></div>
     <div class="drop-hint">.mogrt-Dateien hierher ziehen, um sie hinzuzufügen. Vorlagen auf eine Sammlung ziehen, um sie einzusortieren. Rechtsklick für mehr.</div>
-    <div class="lang"><button class="link" id="langBtn" title="Sprache / Language">English</button></div>
+    <div class="lang"><button class="link" id="aiOpen" title="Bauchbinden und Titel mit Claude oder anderen KI-Werkzeugen erstellen">Mit KI arbeiten …</button><button class="link" id="langBtn" title="Sprache / Language">English</button></div>
   </aside>
 
   <main class="stage">
@@ -263,6 +284,63 @@ table.batch .acts button:hover { color: var(--text); }
       <div class="extras"><button class="link" id="installResolve" title="Scripts für Workspace → Scripts in DaVinci Resolve anlegen">Resolve-Integration installieren</button><span id="gsHint"></span></div>
     </div>
   </aside>
+</div>
+<div class="modal" id="aiModal" hidden role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+  <div class="sheet ai-sheet">
+    <div class="sheet-head">
+      <h2 id="aiTitle">Mit KI arbeiten</h2>
+      <button class="icon-btn" id="aiClose" aria-label="Schließen">Schließen</button>
+      <p>Beschreibe in einem Satz, was du brauchst. Claude sucht die passende Vorlage, füllt die Regler aus, prüft ein Standbild und rendert in deinen Zielordner. Von dort holt das Resolve-Script die Clips in den Bin „MOGRTs“.</p>
+    </div>
+    <div class="ai-body">
+      <h3>1. Einrichten (einmalig)</h3>
+      <div class="ai-card">
+        <h4>Claude Desktop</h4>
+        <p>Ohne Terminal: im Chat schreiben, Claude rendert. Nach dem Eintragen Claude Desktop beenden und neu öffnen.</p>
+        <div class="ai-actions">
+          <button class="secondary-btn primary" id="aiDesktop">In Claude Desktop eintragen</button>
+          <button class="secondary-btn" data-copy="mcp_config">Eintrag kopieren</button>
+          <span class="ai-status" id="aiDesktopStatus"></span>
+        </div>
+      </div>
+      <div class="ai-card">
+        <h4>Claude Code</h4>
+        <p>Im Terminal oder im Code-Bereich der Claude-App. Der Skill erklärt Claude den Ablauf, der Befehl trägt das Werkzeug ein.</p>
+        <div class="ai-actions">
+          <button class="secondary-btn primary" id="aiSkill">Skill installieren</button>
+          <button class="secondary-btn" data-copy="claude_code_command">Befehl kopieren</button>
+          <span class="ai-status" id="aiSkillStatus"></span>
+        </div>
+        <code class="ai-code" id="aiCodeCmd"></code>
+      </div>
+      <div class="ai-card">
+        <h4>Andere KI-Werkzeuge</h4>
+        <p>Programme mit MCP-Unterstützung (z. B. Cursor oder Codex) nutzen denselben Eintrag. Agenten mit Terminal-Zugriff bekommen die Anleitung, etwa für ihre AGENTS.md.</p>
+        <div class="ai-actions">
+          <button class="secondary-btn" data-copy="mcp_config">MCP-Eintrag kopieren</button>
+          <button class="secondary-btn" data-copy="skill_text">Anleitung kopieren</button>
+        </div>
+      </div>
+
+      <h3>2. So fragst du</h3>
+      <ul class="ai-prompts" id="aiPrompts">
+        <li><span>Mach mir Bauchbinden aus der Sammlung „Kunde A“ für Anna Meier (Leiterin Kommunikation) und Jonas Keller (Projektleiter Netze), je 6 Sekunden.</span><button class="icon-btn" data-prompt>Kopieren</button></li>
+        <li><span>Zeig mir zuerst ein Standbild der Bauchbinde im Hochformat mit „Dr. Maximiliane Musterfrau“. Passt der Name?</span><button class="icon-btn" data-prompt>Kopieren</button></li>
+        <li><span>Hier ist eine Liste mit Namen und Funktionen. Rendere für jede Zeile eine Bauchbinde als ProRes mit Alpha.</span><button class="icon-btn" data-prompt>Kopieren</button></li>
+        <li><span>Dieselbe Bauchbinde noch einmal, aber 300 Pixel höher und 8 Sekunden lang.</span><button class="icon-btn" data-prompt>Kopieren</button></li>
+      </ul>
+
+      <h3>3. Tipps</h3>
+      <ul class="ai-tips">
+        <li>Lege pro Kunde eine Sammlung an. Dann reicht „aus der Sammlung Kunde A“, und Claude wählt nur aus deren Vorlagen.</li>
+        <li>Eindeutige Vorlagennamen helfen, am besten mit Format, z. B. „Bauchbinde 16:9“ und „Bauchbinde 9:16“ (Rechtsklick → Umbenennen).</li>
+        <li>Claude prüft lange Namen mit einem Standbild. Passt ein Text nicht, fragt es nach, statt ihn selbst zu kürzen.</li>
+        <li>Gerendert wird in den Zielordner, der hier rechts eingestellt ist. In Resolve holst du neue Clips über Workspace → Scripts → MOGRT Renders importieren.</li>
+        <li>Die App muss dafür nicht geöffnet sein. Neue Vorlagen und Sammlungen kennt Claude sofort.</li>
+      </ul>
+      <p class="ai-note">Datenschutz: Die Vorlagen bleiben auf deinem Rechner und werden hier gerendert. An den KI-Anbieter gehen deine Anfrage, die Namen der Vorlagen und Regler, die eingegebenen Texte und die Vorschaubilder.</p>
+    </div>
+  </div>
 </div>
 <div class="modal" id="batchModal" hidden role="dialog" aria-modal="true" aria-labelledby="batchTitle">
   <div class="sheet">
@@ -445,7 +523,44 @@ const EN = {
   "Stapel-Rendering – {0}": "Batch rendering – {0}",
   "Zeile {0}": "Row {0}",
   "{0} Renderings in der Warteschlange": "{0} renders queued",
-  "Stapel fehlgeschlagen: {0}": "Batch failed: {0}"
+  "Stapel fehlgeschlagen: {0}": "Batch failed: {0}",
+  "Bauchbinden und Titel mit Claude oder anderen KI-Werkzeugen erstellen": "Create lower thirds and titles with Claude or other AI tools",
+  "Mit KI arbeiten …": "Work with AI …",
+  "Mit KI arbeiten": "Work with AI",
+  "Beschreibe in einem Satz, was du brauchst. Claude sucht die passende Vorlage, füllt die Regler aus, prüft ein Standbild und rendert in deinen Zielordner. Von dort holt das Resolve-Script die Clips in den Bin „MOGRTs“.": "Describe what you need in one sentence. Claude finds the matching template, fills in the controls, checks a still and renders into your output folder. From there the Resolve script pulls the clips into the \"MOGRTs\" bin.",
+  "1. Einrichten (einmalig)": "1. Set up (once)",
+  "Ohne Terminal: im Chat schreiben, Claude rendert. Nach dem Eintragen Claude Desktop beenden und neu öffnen.": "No terminal: write in the chat, Claude renders. After adding it, quit and reopen Claude Desktop.",
+  "In Claude Desktop eintragen": "Add to Claude Desktop",
+  "Eintrag kopieren": "Copy entry",
+  "Im Terminal oder im Code-Bereich der Claude-App. Der Skill erklärt Claude den Ablauf, der Befehl trägt das Werkzeug ein.": "In the terminal or the Code tab of the Claude app. The skill explains the workflow to Claude, the command adds the tool.",
+  "Skill installieren": "Install skill",
+  "Befehl kopieren": "Copy command",
+  "Andere KI-Werkzeuge": "Other AI tools",
+  "Programme mit MCP-Unterstützung (z. B. Cursor oder Codex) nutzen denselben Eintrag. Agenten mit Terminal-Zugriff bekommen die Anleitung, etwa für ihre AGENTS.md.": "Apps with MCP support (e.g. Cursor or Codex) use the same entry. Agents with terminal access get the instructions, e.g. for their AGENTS.md.",
+  "MCP-Eintrag kopieren": "Copy MCP entry",
+  "Anleitung kopieren": "Copy instructions",
+  "2. So fragst du": "2. How to ask",
+  "Mach mir Bauchbinden aus der Sammlung „Kunde A“ für Anna Meier (Leiterin Kommunikation) und Jonas Keller (Projektleiter Netze), je 6 Sekunden.": "Make lower thirds from the \"Client A\" collection for Jane Doe (Head of Communications) and John Roe (Project Lead), 6 seconds each.",
+  "Zeig mir zuerst ein Standbild der Bauchbinde im Hochformat mit „Dr. Maximiliane Musterfrau“. Passt der Name?": "First show me a still of the portrait lower third with \"Dr. Maximiliana Longname-Example\". Does the name fit?",
+  "Hier ist eine Liste mit Namen und Funktionen. Rendere für jede Zeile eine Bauchbinde als ProRes mit Alpha.": "Here is a list of names and job titles. Render a lower third for each row as ProRes with alpha.",
+  "Dieselbe Bauchbinde noch einmal, aber 300 Pixel höher und 8 Sekunden lang.": "The same lower third again, but 300 pixels higher and 8 seconds long.",
+  "Kopieren": "Copy",
+  "3. Tipps": "3. Tips",
+  "Lege pro Kunde eine Sammlung an. Dann reicht „aus der Sammlung Kunde A“, und Claude wählt nur aus deren Vorlagen.": "Create one collection per client. Then \"from the Client A collection\" is enough and Claude only picks from its templates.",
+  "Eindeutige Vorlagennamen helfen, am besten mit Format, z. B. „Bauchbinde 16:9“ und „Bauchbinde 9:16“ (Rechtsklick → Umbenennen).": "Clear template names help, ideally with the format, e.g. \"Lower third 16:9\" and \"Lower third 9:16\" (right-click → Rename).",
+  "Claude prüft lange Namen mit einem Standbild. Passt ein Text nicht, fragt es nach, statt ihn selbst zu kürzen.": "Claude checks long names with a still. If a text does not fit, it asks instead of shortening it on its own.",
+  "Gerendert wird in den Zielordner, der hier rechts eingestellt ist. In Resolve holst du neue Clips über Workspace → Scripts → MOGRT Renders importieren.": "Clips are rendered into the output folder set on the right. In Resolve, pull in new clips with Workspace → Scripts → MOGRT Renders importieren.",
+  "Die App muss dafür nicht geöffnet sein. Neue Vorlagen und Sammlungen kennt Claude sofort.": "The app does not need to be open. Claude sees new templates and collections right away.",
+  "Datenschutz: Die Vorlagen bleiben auf deinem Rechner und werden hier gerendert. An den KI-Anbieter gehen deine Anfrage, die Namen der Vorlagen und Regler, die eingegebenen Texte und die Vorschaubilder.": "Privacy: the templates stay on your computer and are rendered here. The AI provider receives your request, the names of templates and controls, the texts you enter and the preview stills.",
+  "Eingetragen ✓ – Claude Desktop neu starten, falls noch offen.": "Added ✓ – restart Claude Desktop if it is open.",
+  "Eingetragen, aber für eine andere Installation. Erneut eintragen.": "Added, but for a different installation. Add it again.",
+  "Claude Desktop scheint nicht installiert zu sein.": "Claude Desktop does not seem to be installed.",
+  "Erneut eintragen": "Add again",
+  "Skill installiert ✓": "Skill installed ✓",
+  "Fehlgeschlagen: {0}": "Failed: {0}",
+  "In die Zwischenablage kopiert.": "Copied to the clipboard.",
+  "In Claude Desktop eingetragen. Claude Desktop neu starten.": "Added to Claude Desktop. Restart Claude Desktop.",
+  "Skill für Claude Code installiert.": "Skill for Claude Code installed."
 };
 const ZH = {
   "Vorlagen": "模板",
@@ -591,7 +706,44 @@ const ZH = {
   "Zeile {0}": "第 {0} 行",
   "{0} Renderings in der Warteschlange": "{0} 个渲染任务已排队",
   "Stapel fehlgeschlagen: {0}": "批量处理失败：{0}",
-  "Sprache / Language": "语言 / Language"
+  "Sprache / Language": "语言 / Language",
+  "Bauchbinden und Titel mit Claude oder anderen KI-Werkzeugen erstellen": "使用 Claude 或其他 AI 工具制作下三分之一字幕和标题",
+  "Mit KI arbeiten …": "使用 AI …",
+  "Mit KI arbeiten": "使用 AI",
+  "Beschreibe in einem Satz, was du brauchst. Claude sucht die passende Vorlage, füllt die Regler aus, prüft ein Standbild und rendert in deinen Zielordner. Von dort holt das Resolve-Script die Clips in den Bin „MOGRTs“.": "用一句话描述你的需求。Claude 会找到合适的模板、填写控件、检查静帧，并渲染到你的输出文件夹。Resolve 脚本会从那里把片段导入“MOGRTs”媒体夹。",
+  "1. Einrichten (einmalig)": "1. 设置（仅需一次）",
+  "Ohne Terminal: im Chat schreiben, Claude rendert. Nach dem Eintragen Claude Desktop beenden und neu öffnen.": "无需终端：在聊天中输入，Claude 负责渲染。添加后请退出并重新打开 Claude Desktop。",
+  "In Claude Desktop eintragen": "添加到 Claude Desktop",
+  "Eintrag kopieren": "复制配置项",
+  "Im Terminal oder im Code-Bereich der Claude-App. Der Skill erklärt Claude den Ablauf, der Befehl trägt das Werkzeug ein.": "在终端或 Claude 应用的 Code 标签页中使用。技能向 Claude 说明流程，命令用于添加工具。",
+  "Skill installieren": "安装技能",
+  "Befehl kopieren": "复制命令",
+  "Andere KI-Werkzeuge": "其他 AI 工具",
+  "Programme mit MCP-Unterstützung (z. B. Cursor oder Codex) nutzen denselben Eintrag. Agenten mit Terminal-Zugriff bekommen die Anleitung, etwa für ihre AGENTS.md.": "支持 MCP 的应用（如 Cursor 或 Codex）使用相同的配置项。可访问终端的智能体使用这份说明，例如放入其 AGENTS.md。",
+  "MCP-Eintrag kopieren": "复制 MCP 配置项",
+  "Anleitung kopieren": "复制说明",
+  "2. So fragst du": "2. 如何提问",
+  "Mach mir Bauchbinden aus der Sammlung „Kunde A“ für Anna Meier (Leiterin Kommunikation) und Jonas Keller (Projektleiter Netze), je 6 Sekunden.": "用“客户 A”合集为张伟（传播主管）和李娜（项目负责人）各制作一条 6 秒的下三分之一字幕。",
+  "Zeig mir zuerst ein Standbild der Bauchbinde im Hochformat mit „Dr. Maximiliane Musterfrau“. Passt der Name?": "先给我看一张竖屏下三分之一字幕的静帧，名字用“欧阳明月博士”。名字放得下吗？",
+  "Hier ist eine Liste mit Namen und Funktionen. Rendere für jede Zeile eine Bauchbinde als ProRes mit Alpha.": "这是一份姓名和职务列表。请为每一行渲染一条带 Alpha 的 ProRes 下三分之一字幕。",
+  "Dieselbe Bauchbinde noch einmal, aber 300 Pixel höher und 8 Sekunden lang.": "同样的下三分之一字幕再来一条，但上移 300 像素，时长 8 秒。",
+  "Kopieren": "复制",
+  "3. Tipps": "3. 提示",
+  "Lege pro Kunde eine Sammlung an. Dann reicht „aus der Sammlung Kunde A“, und Claude wählt nur aus deren Vorlagen.": "为每个客户建一个合集。这样只需说“用客户 A 合集”，Claude 就只会从其中挑选模板。",
+  "Eindeutige Vorlagennamen helfen, am besten mit Format, z. B. „Bauchbinde 16:9“ und „Bauchbinde 9:16“ (Rechtsklick → Umbenennen).": "清晰的模板名称很有帮助，最好包含画幅，例如“字幕条 16:9”和“字幕条 9:16”（右键 → 重命名）。",
+  "Claude prüft lange Namen mit einem Standbild. Passt ein Text nicht, fragt es nach, statt ihn selbst zu kürzen.": "Claude 会用静帧检查较长的名字。文字放不下时，它会询问你，而不是擅自缩短。",
+  "Gerendert wird in den Zielordner, der hier rechts eingestellt ist. In Resolve holst du neue Clips über Workspace → Scripts → MOGRT Renders importieren.": "渲染输出到右侧设置的输出文件夹。在 Resolve 中通过 Workspace → Scripts → MOGRT Renders importieren 导入新片段。",
+  "Die App muss dafür nicht geöffnet sein. Neue Vorlagen und Sammlungen kennt Claude sofort.": "无需打开本应用。新的模板和合集 Claude 会立即识别。",
+  "Datenschutz: Die Vorlagen bleiben auf deinem Rechner und werden hier gerendert. An den KI-Anbieter gehen deine Anfrage, die Namen der Vorlagen und Regler, die eingegebenen Texte und die Vorschaubilder.": "隐私：模板保留在你的电脑上并在本地渲染。发送给 AI 提供商的是你的请求、模板和控件的名称、你输入的文字以及预览静帧。",
+  "Eingetragen ✓ – Claude Desktop neu starten, falls noch offen.": "已添加 ✓ – 如果 Claude Desktop 正在运行，请重新启动。",
+  "Eingetragen, aber für eine andere Installation. Erneut eintragen.": "已添加，但指向另一个安装位置。请重新添加。",
+  "Claude Desktop scheint nicht installiert zu sein.": "似乎未安装 Claude Desktop。",
+  "Erneut eintragen": "重新添加",
+  "Skill installiert ✓": "技能已安装 ✓",
+  "Fehlgeschlagen: {0}": "失败：{0}",
+  "In die Zwischenablage kopiert.": "已复制到剪贴板。",
+  "In Claude Desktop eingetragen. Claude Desktop neu starten.": "已添加到 Claude Desktop。请重新启动 Claude Desktop。",
+  "Skill für Claude Code installiert.": "已为 Claude Code 安装技能。"
 };
 // UI texts are written in German; L() translates them (placeholders {0}, {1} …)
 const TABLE = LANG === 'en' ? EN : LANG === 'zh' ? ZH : null;
@@ -1127,6 +1279,39 @@ $('#installResolve').onclick = async () => {
   try { const r = await (await api('/api/install-resolve', {})).json(); toast(L('Installiert. In Resolve: Workspace → Scripts ({0} Scripts).', r.files.length)); }
   catch (e) { toast(L('Installation fehlgeschlagen: {0}', e.message)); }
 };
+// "Mit KI arbeiten": set up Claude Desktop / Claude Code, example prompts
+let aiSetup = null;
+function drawAi() {
+  const s = aiSetup; if (!s) return;
+  const d = s.claude_desktop, ds = $('#aiDesktopStatus');
+  ds.className = 'ai-status' + (d.installed ? ' ok' : d.outdated ? ' warn' : '');
+  ds.textContent = d.installed ? L('Eingetragen ✓ – Claude Desktop neu starten, falls noch offen.')
+    : d.outdated ? L('Eingetragen, aber für eine andere Installation. Erneut eintragen.')
+    : d.present ? '' : L('Claude Desktop scheint nicht installiert zu sein.');
+  $('#aiDesktop').textContent = d.installed ? L('Erneut eintragen') : L('In Claude Desktop eintragen');
+  const ks = $('#aiSkillStatus');
+  ks.className = 'ai-status' + (s.skill.installed ? ' ok' : '');
+  ks.textContent = s.skill.installed ? L('Skill installiert ✓') : '';
+  $('#aiCodeCmd').textContent = s.claude_code_command;
+}
+async function aiCall(body) {
+  try { aiSetup = await (await api('/api/ai-setup', body)).json(); drawAi(); return true; }
+  catch (e) { toast(L('Fehlgeschlagen: {0}', e.message)); return false; }
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch { const t = document.createElement('textarea'); t.value = text; document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); }
+  toast(L('In die Zwischenablage kopiert.'));
+}
+$('#aiOpen').onclick = () => { $('#aiModal').hidden = false; $('#aiClose').focus(); aiCall({}); };
+$('#aiClose').onclick = () => { $('#aiModal').hidden = true; };
+$('#aiModal').addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#aiModal').hidden = true; e.stopPropagation(); } });
+$('#aiModal').addEventListener('click', (e) => { if (e.target === $('#aiModal')) $('#aiModal').hidden = true; });
+$('#aiDesktop').onclick = async () => { if (await aiCall({ install: 'claude-desktop' })) toast(L('In Claude Desktop eingetragen. Claude Desktop neu starten.')); };
+$('#aiSkill').onclick = async () => { if (await aiCall({ install: 'skill' })) toast(L('Skill für Claude Code installiert.')); };
+for (const b of document.querySelectorAll('#aiModal [data-copy]')) b.onclick = () => aiSetup && copyText(aiSetup[b.dataset.copy]);
+for (const b of document.querySelectorAll('#aiModal [data-prompt]')) b.onclick = () => copyText(b.previousElementSibling.textContent);
+
 api('/api/status').then(r => r.json()).then(s => {
   if (!s.ghostscript) $('#gsHint').textContent = L('Ghostscript fehlt – EPS-Logos nur als Vorschau.');
 }).catch(() => {});

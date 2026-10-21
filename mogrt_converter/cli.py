@@ -313,11 +313,11 @@ def cmd_install_resolve(args: argparse.Namespace) -> None:
 
 def cmd_mcp(args: argparse.Namespace) -> None:
     if args.config:
-        from .agent_skill import command, mcp_config
+        from .agent_skill import claude_code_command, mcp_config
 
         print(mcp_config())
         print(f"\nClaude Desktop: in claude_desktop_config.json eintragen (Einstellungen → Entwickler → Konfiguration bearbeiten)."
-              f"\nClaude Code:    claude mcp add --scope user mogrt-converter -- {command()} mcp", file=sys.stderr)
+              f"\nClaude Code:    {claude_code_command()}", file=sys.stderr)
         return
     from .mcp_server import main as serve
 

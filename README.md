@@ -91,6 +91,8 @@ Formats (`-f`): `prores4444` (default), `prores4444xq`, `png-mov`, `h264`.
 
 #### With Claude Code or other AI agents
 
+The easiest way is in the app: *Work with AI …* at the bottom left adds the tool to Claude Desktop with one click, installs the skill for Claude Code and shows example requests and tips.
+
 Wherever a template is expected you can also pass its name from the app's library (or a unique part of it). With `--json`, `list`, `info`, `still`, `render` and `batch` print one JSON object that scripts and AI agents can read reliably. Besides CSV, `batch` also takes a JSON list `[{"Title": "…", "filename": "…"}]`.
 
 ```bash

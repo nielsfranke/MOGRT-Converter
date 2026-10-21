@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shlex
 import shutil
 import sys
@@ -78,7 +80,8 @@ Messages in the error text are German.
 def command_argv() -> list[str]:
     """How to start the command line of this installation (absolute: agents run without our venv)."""
     if paths.FROZEN:
-        return [sys.executable]
+        twin = Path(sys.executable).with_name("mogrt.exe")  # Windows: the GUI exe has no stdout
+        return [str(twin)] if sys.platform == "win32" and twin.exists() else [sys.executable]
     script = Path(sys.executable).parent / ("mogrt.exe" if sys.platform == "win32" else "mogrt")
     exe = str(script) if script.exists() else shutil.which("mogrt")
     return [exe] if exe else [sys.executable, "-m", "mogrt_converter.cli"]
@@ -89,21 +92,82 @@ def command() -> str:
     return " ".join(shlex.quote(a) for a in command_argv())
 
 
+MCP_NAME = "mogrt-converter"
+
+
+def mcp_entry() -> dict:
+    argv = command_argv()
+    return {"command": argv[0], "args": argv[1:] + ["mcp"]}
+
+
 def mcp_config() -> str:
     """Entry for claude_desktop_config.json (and other clients with the same mcpServers format)."""
-    import json
+    return json.dumps({"mcpServers": {MCP_NAME: mcp_entry()}}, indent=2, ensure_ascii=False)
 
-    argv = command_argv()
-    entry = {"command": argv[0], "args": argv[1:] + ["mcp"]}
-    return json.dumps({"mcpServers": {"mogrt-converter": entry}}, indent=2, ensure_ascii=False)
+
+def claude_code_command() -> str:
+    return f"claude mcp add --scope user {MCP_NAME} -- {command()} mcp"
+
+
+def claude_desktop_config_path() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "Claude" / "claude_desktop_config.json"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "Claude" / "claude_desktop_config.json"
+
+
+def _read_desktop_config() -> dict:
+    p = claude_desktop_config_path()
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8") or "{}")
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{p} ist kein gültiges JSON ({e}). Bitte von Hand korrigieren.") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{p} hat ein unerwartetes Format")
+    return data
+
+
+def install_claude_desktop() -> Path:
+    """Add (or update) our server in Claude Desktop's config; other entries stay untouched."""
+    p = claude_desktop_config_path()
+    data = _read_desktop_config()
+    data.setdefault("mcpServers", {})[MCP_NAME] = mcp_entry()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return p
+
+
+def setup_status() -> dict:
+    """What the app's "Mit KI arbeiten" dialog shows."""
+    desktop = claude_desktop_config_path()
+    try:
+        entry = _read_desktop_config().get("mcpServers", {}).get(MCP_NAME)
+    except ValueError:
+        entry = None
+    skill = skill_path()
+    return {
+        "claude_desktop": {"installed": entry == mcp_entry(), "outdated": entry is not None and entry != mcp_entry(),
+                           "present": desktop.parent.is_dir(), "config_path": str(desktop)},
+        "skill": {"installed": skill.exists() and skill.read_text(encoding="utf-8") == skill_text(), "path": str(skill)},
+        "claude_code_command": claude_code_command(),
+        "mcp_config": mcp_config(),
+        "skill_text": skill_text(),
+    }
 
 
 def skill_text() -> str:
     return SKILL.format(cmd=command())
 
 
+def skill_path(root: Path | None = None) -> Path:
+    return (root or Path.home() / ".claude" / "skills") / "mogrt-converter" / "SKILL.md"
+
+
 def install(root: Path | None = None) -> Path:
-    dest = (root or Path.home() / ".claude" / "skills") / "mogrt-converter" / "SKILL.md"
+    dest = skill_path(root)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(skill_text(), encoding="utf-8")
     return dest

@@ -91,6 +91,8 @@ mogrt batch template.mogrt names.csv -o renders/                      # one file
 
 #### 配合 Claude Code 或其他 AI 智能体
 
+最简单的方式是在应用中操作：左下角的 *使用 AI …* 可一键将工具添加到 Claude Desktop、为 Claude Code 安装技能，并提供示例请求和提示。
+
 凡需要模板路径之处，也可以使用应用库中模板的名称（或其中唯一的一部分）。加上 `--json` 后，`list`、`info`、`still`、`render` 和 `batch` 会输出一个 JSON 对象，便于脚本和 AI 智能体可靠读取。`batch` 除 CSV 外也接受 JSON 列表 `[{"Title": "…", "filename": "…"}]`。
 
 ```bash

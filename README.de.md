@@ -89,6 +89,8 @@ Formate (`-f`): `prores4444` (Standard), `prores4444xq`, `png-mov`, `h264`.
 
 #### Mit Claude Code oder anderen KI-Agenten
 
+Am einfachsten geht es in der App: *Mit KI arbeiten …* unten links trägt das Werkzeug mit einem Klick in Claude Desktop ein, installiert den Skill für Claude Code und zeigt Beispiel-Anfragen und Tipps.
+
 Statt eines Pfads geht überall auch der Name einer Vorlage aus der App-Bibliothek (oder ein eindeutiger Teil davon). Mit `--json` geben `list`, `info`, `still`, `render` und `batch` ein JSON-Objekt aus, das Skripte und KI-Agenten zuverlässig lesen können. `batch` nimmt außer CSV auch eine JSON-Liste `[{"Titel": "…", "filename": "…"}]`.
 
 ```bash

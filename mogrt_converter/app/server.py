@@ -449,6 +449,14 @@ class Handler(BaseHTTPRequestHandler):
                 PREFETCH.forget(str(s.path))
                 (s.mogrt.root / "poster.png").unlink(missing_ok=True)
                 self._json({"result": res})
+            elif url.path == "/api/ai-setup":
+                from .. import agent_skill
+
+                if body.get("install") == "claude-desktop":
+                    agent_skill.install_claude_desktop()
+                elif body.get("install") == "skill":
+                    agent_skill.install()
+                self._json(agent_skill.setup_status())
             elif url.path == "/api/install-resolve":
                 from ..resolve_scripts import install
 
