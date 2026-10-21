@@ -35,7 +35,7 @@ MOGRT Converter reads the template directly and renders it with its own renderer
 - **Batch rendering**: many variants at once, as a table in the app or from a CSV exported from Excel/Numbers
 - **ProRes 4444 with alpha** (also 4444 XQ, PNG-in-MOV or H.264), including the template's audio
 - **Resolve integration**: a script pulls new clips into a "MOGRTs" bin in the Media Pool
-- **Command line** for automation and AI agents such as Claude Code (JSON output, templates by name)
+- **Command line** for automation and AI agents such as Claude Code (JSON output, templates by name, MCP server)
 - **English, German and Chinese**: the interface follows the system language and can be switched at the bottom left
 
 ## Installation
@@ -100,6 +100,8 @@ mogrt skill --install                                 # install the instructions
 ```
 
 After `mogrt skill --install`, a sentence like "make lower thirds for Jane Doe (Head of Communications) and John Roe (Project Lead), 6 seconds" is enough in Claude Code. Claude finds the template, checks a still for text that is too long and renders into the app's render folder, where the Resolve script picks the clips up. `mogrt skill` without options prints the instructions, e.g. for other agents' `AGENTS.md`.
+
+**MCP server** for Claude Desktop and other MCP clients (no terminal needed): `mogrt mcp` provides the tools `list_templates`, `template_info`, `preview_still` (returns the image, so the model sees whether a name is too long), `render` and `render_batch`. `mogrt mcp --config` prints the entry for `claude_desktop_config.json` (Claude Desktop: Settings → Developer → Edit Config) and the command for Claude Code.
 
 ## What is supported
 

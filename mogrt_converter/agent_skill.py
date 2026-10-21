@@ -75,15 +75,27 @@ Messages in the error text are German.
 """
 
 
-def command() -> str:
-    """How to call the command line from a shell, for this installation."""
+def command_argv() -> list[str]:
+    """How to start the command line of this installation (absolute: agents run without our venv)."""
     if paths.FROZEN:
-        return shlex.quote(sys.executable)
+        return [sys.executable]
     script = Path(sys.executable).parent / ("mogrt.exe" if sys.platform == "win32" else "mogrt")
-    exe = str(script) if script.exists() else shutil.which("mogrt")  # absolute: agents run without our venv
-    if exe:
-        return shlex.quote(exe)
-    return f"{shlex.quote(sys.executable)} -m mogrt_converter.cli"
+    exe = str(script) if script.exists() else shutil.which("mogrt")
+    return [exe] if exe else [sys.executable, "-m", "mogrt_converter.cli"]
+
+
+def command() -> str:
+    """command_argv() for a shell."""
+    return " ".join(shlex.quote(a) for a in command_argv())
+
+
+def mcp_config() -> str:
+    """Entry for claude_desktop_config.json (and other clients with the same mcpServers format)."""
+    import json
+
+    argv = command_argv()
+    entry = {"command": argv[0], "args": argv[1:] + ["mcp"]}
+    return json.dumps({"mcpServers": {"mogrt-converter": entry}}, indent=2, ensure_ascii=False)
 
 
 def skill_text() -> str:

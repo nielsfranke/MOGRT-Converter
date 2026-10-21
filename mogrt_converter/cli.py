@@ -311,6 +311,19 @@ def cmd_install_resolve(args: argparse.Namespace) -> None:
     print("In Resolve: Workspace → Scripts → 'MOGRT Converter starten' / 'MOGRT Renders importieren'")
 
 
+def cmd_mcp(args: argparse.Namespace) -> None:
+    if args.config:
+        from .agent_skill import command, mcp_config
+
+        print(mcp_config())
+        print(f"\nClaude Desktop: in claude_desktop_config.json eintragen (Einstellungen → Entwickler → Konfiguration bearbeiten)."
+              f"\nClaude Code:    claude mcp add --scope user mogrt-converter -- {command()} mcp", file=sys.stderr)
+        return
+    from .mcp_server import main as serve
+
+    serve()
+
+
 def cmd_skill(args: argparse.Namespace) -> None:
     from .agent_skill import install, skill_text
 
@@ -417,6 +430,10 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("install-resolve", help="Scripts für DaVinci Resolve (Workspace → Scripts) installieren")
     p.add_argument("--output-dir", help="Render-Ordner, aus dem importiert wird")
     p.set_defaults(fn=cmd_install_resolve)
+
+    p = sub.add_parser("mcp", help="MCP-Server (stdio) für Claude Desktop, Claude Code und andere KI-Clients")
+    p.add_argument("--config", action="store_true", help="Eintrag für Claude Desktop / Claude Code ausgeben")
+    p.set_defaults(fn=cmd_mcp)
 
     p = sub.add_parser("skill", help="Anleitung für KI-Agenten (Claude Code, Codex …) ausgeben oder installieren")
     p.add_argument("--install", action="store_true", help="als Skill nach ~/.claude/skills/mogrt-converter installieren")

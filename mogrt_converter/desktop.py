@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from . import paths
 
-CLI_COMMANDS = {"list", "info", "inspect", "still", "render", "app", "install-resolve", "fonts", "batch", "skill",
+CLI_COMMANDS = {"list", "info", "inspect", "still", "render", "app", "install-resolve", "fonts", "batch", "skill", "mcp",
                 "-h", "--help"}
 
 

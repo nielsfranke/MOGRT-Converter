@@ -35,7 +35,7 @@ Der MOGRT Converter liest die Vorlage direkt und rendert sie mit einem eigenen R
 - **Stapel-Rendering**: viele Varianten auf einmal, als Tabelle in der App oder per CSV aus Excel/Numbers
 - **ProRes 4444 mit Alpha** (auch 4444 XQ, PNG-MOV oder H.264), Ton aus der Vorlage inklusive
 - **Resolve-Integration**: Clips per Script in einen Bin „MOGRTs“ im Media Pool holen
-- **Kommandozeile** für Stapelverarbeitung und KI-Agenten wie Claude Code (JSON-Ausgabe, Vorlagen per Name)
+- **Kommandozeile** für Stapelverarbeitung und KI-Agenten wie Claude Code (JSON-Ausgabe, Vorlagen per Name, MCP-Server)
 - **Deutsch, Englisch und Chinesisch**: die Oberfläche folgt der Systemsprache, umschaltbar unten links
 
 ## Installation
@@ -98,6 +98,8 @@ mogrt skill --install                                 # Anleitung als Skill für
 ```
 
 Nach `mogrt skill --install` genügt in Claude Code ein Satz wie „Mach mir Bauchbinden für Anna Meier (Leiterin Kommunikation) und Jonas Keller (Projektleiter Netze), 6 Sekunden“. Claude sucht die Vorlage, prüft ein Standbild auf zu lange Texte und rendert in den Render-Ordner der App, von wo das Resolve-Script die Clips importiert. `mogrt skill` ohne Option gibt die Anleitung aus, z. B. für die `AGENTS.md` anderer Agenten.
+
+**MCP-Server** für Claude Desktop und andere MCP-Clients (auch ohne Terminal): `mogrt mcp` stellt die Werkzeuge `list_templates`, `template_info`, `preview_still` (gibt das Bild zurück, das Modell sieht also, ob ein Name zu lang ist), `render` und `render_batch` bereit. `mogrt mcp --config` gibt den Eintrag für `claude_desktop_config.json` (Claude Desktop: Einstellungen → Entwickler → Konfiguration bearbeiten) und den Befehl für Claude Code aus.
 
 ## Was unterstützt wird
 

@@ -35,7 +35,7 @@ MOGRT Converter 直接读取模板，并用自带的渲染器还原 After Effect
 - **批量渲染**：在应用内以表格形式，或从 Excel/Numbers 导出的 CSV 一次渲染多个变体
 - **带 Alpha 通道的 ProRes 4444**（另有 4444 XQ、PNG-in-MOV 和 H.264），包含模板自带的音频
 - **Resolve 集成**：一个脚本可将新片段导入媒体池中的 "MOGRTs" 素材夹
-- **命令行**，可用于自动化和 Claude Code 等 AI 智能体（JSON 输出，按名称调用模板）
+- **命令行**，可用于自动化和 Claude Code 等 AI 智能体（JSON 输出，按名称调用模板，MCP 服务器）
 - **中文、英语和德语**：界面跟随系统语言，也可在左下角切换
 
 ## 安装
@@ -100,6 +100,8 @@ mogrt skill --install                                 # 将说明安装为 Claud
 ```
 
 执行 `mogrt skill --install` 后，在 Claude Code 中一句话即可，例如“为 Jane Doe（传播主管）制作 6 秒的下三分之一字幕”。Claude 会查找模板、用静帧检查文字是否过长，并渲染到应用的渲染文件夹，Resolve 脚本会从那里导入片段。不带参数的 `mogrt skill` 会输出这份说明，可用于其他智能体的 `AGENTS.md`。
+
+**MCP 服务器**，供 Claude Desktop 及其他 MCP 客户端使用（无需终端）：`mogrt mcp` 提供 `list_templates`、`template_info`、`preview_still`（返回图像，模型能看出名字是否过长）、`render` 和 `render_batch` 等工具。`mogrt mcp --config` 会输出 `claude_desktop_config.json` 的配置项（Claude Desktop：设置 → 开发者 → 编辑配置）以及 Claude Code 的命令。
 
 ## 支持范围
 
