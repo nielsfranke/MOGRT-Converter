@@ -1,6 +1,6 @@
 """Render After Effects MOGRT templates without Adobe software."""
 
-__version__ = "0.6.5"
+__version__ = "0.7.0"
 
 from .mogrt import Mogrt, Control, load
 
