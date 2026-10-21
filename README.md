@@ -35,7 +35,7 @@ MOGRT Converter reads the template directly and renders it with its own renderer
 - **Batch rendering**: many variants at once, as a table in the app or from a CSV exported from Excel/Numbers
 - **ProRes 4444 with alpha** (also 4444 XQ, PNG-in-MOV or H.264), including the template's audio
 - **Resolve integration**: a script pulls new clips into a "MOGRTs" bin in the Media Pool
-- **Command line** for automation
+- **Command line** for automation and AI agents such as Claude Code (JSON output, templates by name)
 - **English, German and Chinese**: the interface follows the system language and can be switched at the bottom left
 
 ## Installation
@@ -88,6 +88,18 @@ mogrt batch template.mogrt names.csv -o renders/                      # one file
 
 In the Mac app the command is `"/Applications/MOGRT Converter.app/Contents/MacOS/MOGRT Converter"`, on Windows `mogrt.exe` in the app folder.
 Formats (`-f`): `prores4444` (default), `prores4444xq`, `png-mov`, `h264`.
+
+#### With Claude Code or other AI agents
+
+Wherever a template is expected you can also pass its name from the app's library (or a unique part of it). With `--json`, `list`, `info`, `still`, `render` and `batch` print one JSON object that scripts and AI agents can read reliably. Besides CSV, `batch` also takes a JSON list `[{"Title": "…", "filename": "…"}]`.
+
+```bash
+mogrt list --collection "Client A" --json             # library templates, collections, render folder
+mogrt info "Lower third" --json                       # controls with type and default
+mogrt skill --install                                 # install the instructions as a Claude Code skill
+```
+
+After `mogrt skill --install`, a sentence like "make lower thirds for Jane Doe (Head of Communications) and John Roe (Project Lead), 6 seconds" is enough in Claude Code. Claude finds the template, checks a still for text that is too long and renders into the app's render folder, where the Resolve script picks the clips up. `mogrt skill` without options prints the instructions, e.g. for other agents' `AGENTS.md`.
 
 ## What is supported
 

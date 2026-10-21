@@ -35,7 +35,7 @@ MOGRT Converter 直接读取模板，并用自带的渲染器还原 After Effect
 - **批量渲染**：在应用内以表格形式，或从 Excel/Numbers 导出的 CSV 一次渲染多个变体
 - **带 Alpha 通道的 ProRes 4444**（另有 4444 XQ、PNG-in-MOV 和 H.264），包含模板自带的音频
 - **Resolve 集成**：一个脚本可将新片段导入媒体池中的 "MOGRTs" 素材夹
-- **命令行**，可用于自动化
+- **命令行**，可用于自动化和 Claude Code 等 AI 智能体（JSON 输出，按名称调用模板）
 - **中文、英语和德语**：界面跟随系统语言，也可在左下角切换
 
 ## 安装
@@ -88,6 +88,18 @@ mogrt batch template.mogrt names.csv -o renders/                      # one file
 
 在 Mac 应用中，命令为 `"/Applications/MOGRT Converter.app/Contents/MacOS/MOGRT Converter"`；在 Windows 中为应用目录下的 `mogrt.exe`。
 格式（`-f`）：`prores4444`（默认）、`prores4444xq`、`png-mov`、`h264`。
+
+#### 配合 Claude Code 或其他 AI 智能体
+
+凡需要模板路径之处，也可以使用应用库中模板的名称（或其中唯一的一部分）。加上 `--json` 后，`list`、`info`、`still`、`render` 和 `batch` 会输出一个 JSON 对象，便于脚本和 AI 智能体可靠读取。`batch` 除 CSV 外也接受 JSON 列表 `[{"Title": "…", "filename": "…"}]`。
+
+```bash
+mogrt list --collection "Client A" --json             # 库中的模板、合集和渲染文件夹
+mogrt info "Lower third" --json                       # 控件及其类型和默认值
+mogrt skill --install                                 # 将说明安装为 Claude Code 技能
+```
+
+执行 `mogrt skill --install` 后，在 Claude Code 中一句话即可，例如“为 Jane Doe（传播主管）制作 6 秒的下三分之一字幕”。Claude 会查找模板、用静帧检查文字是否过长，并渲染到应用的渲染文件夹，Resolve 脚本会从那里导入片段。不带参数的 `mogrt skill` 会输出这份说明，可用于其他智能体的 `AGENTS.md`。
 
 ## 支持范围
 

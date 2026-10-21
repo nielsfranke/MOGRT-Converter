@@ -25,35 +25,11 @@ from ..mogrt import Mogrt, load
 from ..output import collect_audio, render_video
 from ..render.compositor import Renderer
 from .. import paths
+from ..library import CONFIG_PATH, load_config, save_config  # noqa: F401 (re-exported)
+from ..library import items as library_items
 from .prefetch import PREFETCH, state_key
 
 STATIC = Path(__file__).parent / "static"
-CONFIG_PATH = paths.data_dir() / "config.json"
-LEGACY_CONFIG = Path.home() / ".config" / "mogrt-converter" / "config.json"
-
-
-def load_config() -> dict:
-    cfg = {
-        "library": [str(paths.default_movies_dir() / "MOGRTs")],
-        "output_dir": str(paths.default_movies_dir() / "MOGRT Renders"),
-        "format": "prores4444",
-    }
-    src = CONFIG_PATH if CONFIG_PATH.exists() else LEGACY_CONFIG
-    if src.exists():
-        try:
-            cfg.update(json.loads(src.read_text()))
-        except Exception:
-            pass
-    for k, v in (("files", []), ("hidden", []), ("aliases", {}), ("collections", []), ("recent", {})):
-        cfg.setdefault(k, v)
-    return cfg
-
-
-def save_config(cfg: dict) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
-
-
 class Session:
     """A loaded MOGRT with a preview renderer (guarded by a lock)."""
 
@@ -94,33 +70,7 @@ STATE = State()
 
 
 def _library() -> list[dict[str, Any]]:
-    """All known templates. `folder` is the library folder, "" for single files, None if only in a collection."""
-    cfg = STATE.cfg
-    hidden, aliases, recent = set(cfg["hidden"]), cfg["aliases"], cfg["recent"]
-    out, seen = [], set()
-
-    def add(f: Path, folder: str | None) -> None:
-        key = str(f.resolve())
-        if key in seen or key in hidden:
-            return
-        seen.add(key)
-        out.append({"path": key, "name": aliases.get(key) or f.stem, "file": f.stem, "folder": folder,
-                    "recent": recent.get(key, 0), "added": f.stat().st_mtime})
-
-    for f in cfg["files"]:
-        if Path(f).exists():
-            add(Path(f), "")
-    for d in cfg["library"]:
-        root = Path(d).expanduser()
-        if root.is_dir():
-            for f in root.rglob("*.mogrt"):
-                add(f, str(root))
-    for c in cfg["collections"]:  # collection items whose folder is no longer in the library
-        for f in c["items"]:
-            if Path(f).exists():
-                add(Path(f), None)
-    out.sort(key=lambda i: i["name"].lower())
-    return out
+    return library_items(STATE.cfg)
 
 
 def _edit_library(op: str, body: dict) -> None:

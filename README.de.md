@@ -35,7 +35,7 @@ Der MOGRT Converter liest die Vorlage direkt und rendert sie mit einem eigenen R
 - **Stapel-Rendering**: viele Varianten auf einmal, als Tabelle in der App oder per CSV aus Excel/Numbers
 - **ProRes 4444 mit Alpha** (auch 4444 XQ, PNG-MOV oder H.264), Ton aus der Vorlage inklusive
 - **Resolve-Integration**: Clips per Script in einen Bin „MOGRTs“ im Media Pool holen
-- **Kommandozeile** für Stapelverarbeitung
+- **Kommandozeile** für Stapelverarbeitung und KI-Agenten wie Claude Code (JSON-Ausgabe, Vorlagen per Name)
 - **Deutsch, Englisch und Chinesisch**: die Oberfläche folgt der Systemsprache, umschaltbar unten links
 
 ## Installation
@@ -86,6 +86,18 @@ mogrt batch vorlage.mogrt namen.csv -o renders/                       # eine Dat
 
 In der Mac-App heißt der Befehl `"/Applications/MOGRT Converter.app/Contents/MacOS/MOGRT Converter"`, unter Windows `mogrt.exe` im App-Ordner.
 Formate (`-f`): `prores4444` (Standard), `prores4444xq`, `png-mov`, `h264`.
+
+#### Mit Claude Code oder anderen KI-Agenten
+
+Statt eines Pfads geht überall auch der Name einer Vorlage aus der App-Bibliothek (oder ein eindeutiger Teil davon). Mit `--json` geben `list`, `info`, `still`, `render` und `batch` ein JSON-Objekt aus, das Skripte und KI-Agenten zuverlässig lesen können. `batch` nimmt außer CSV auch eine JSON-Liste `[{"Titel": "…", "filename": "…"}]`.
+
+```bash
+mogrt list --collection "Kunde A" --json              # Vorlagen der Bibliothek, Sammlungen, Render-Ordner
+mogrt info "Bauchbinde (links unten)" --json          # Regler mit Typ und Standardwert
+mogrt skill --install                                 # Anleitung als Skill für Claude Code installieren
+```
+
+Nach `mogrt skill --install` genügt in Claude Code ein Satz wie „Mach mir Bauchbinden für Anna Meier (Leiterin Kommunikation) und Jonas Keller (Projektleiter Netze), 6 Sekunden“. Claude sucht die Vorlage, prüft ein Standbild auf zu lange Texte und rendert in den Render-Ordner der App, von wo das Resolve-Script die Clips importiert. `mogrt skill` ohne Option gibt die Anleitung aus, z. B. für die `AGENTS.md` anderer Agenten.
 
 ## Was unterstützt wird
 

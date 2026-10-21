@@ -15,7 +15,8 @@ from urllib.parse import quote
 
 from . import paths
 
-CLI_COMMANDS = {"info", "inspect", "still", "render", "app", "install-resolve", "fonts", "batch", "-h", "--help"}
+CLI_COMMANDS = {"list", "info", "inspect", "still", "render", "app", "install-resolve", "fonts", "batch", "skill",
+                "-h", "--help"}
 
 
 class Api:
