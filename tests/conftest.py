@@ -9,6 +9,11 @@ from mogrt_converter import library
 from sample_mogrt import make
 
 
+@pytest.fixture(autouse=True)
+def _no_font_download(monkeypatch):
+    monkeypatch.setenv("MOGRT_FONT_DOWNLOAD", "0")
+
+
 @pytest.fixture()
 def lib(tmp_path, monkeypatch):
     """Isolated app config with two templates in a folder and one in a collection."""

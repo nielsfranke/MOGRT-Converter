@@ -8,8 +8,11 @@ instantiated with fontTools and saved as a static TTF in the user font folder.
 from __future__ import annotations
 
 import io
+import json
+import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -24,12 +27,18 @@ LICENSE_DIRS = ("ofl", "apache", "ufl")
 _UA = {"User-Agent": "MOGRT-Converter (+https://github.com/nielsfranke/MOGRT-Converter)"}
 
 
+class Offline(OSError):
+    """GitHub not reachable (no network, timeout) – unlike a 404, this says nothing about the font."""
+
+
 def _get(url: str) -> bytes | None:
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=_UA), timeout=30) as r:
             return r.read()
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+    except urllib.error.HTTPError:
         return None
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise Offline(str(e)) from e
 
 
 def _family_dir(ps_name: str) -> str:
@@ -140,6 +149,54 @@ def download_missing(ps_names: list[str]) -> dict[str, str | None]:
     if any(result.values()):
         refresh()
     return result
+
+
+# fonts that are not on Google Fonts (commercial, Adobe Fonts …): don't ask again for a while
+_NOT_FOUND_FILE = "google_fonts_not_found.json"
+_NOT_FOUND_DAYS = 30
+
+
+def _not_found() -> dict[str, float]:
+    try:
+        return json.loads((user_fonts_dir() / _NOT_FOUND_FILE).read_text())
+    except Exception:
+        return {}
+
+
+def ensure(ps_names: list[str]) -> list[str]:
+    """Download missing free fonts before rendering (automatically, once). Returns the fonts loaded.
+
+    Set MOGRT_FONT_DOWNLOAD=0 to switch this off (e.g. on machines without internet access).
+    """
+    if os.environ.get("MOGRT_FONT_DOWNLOAD", "1").lower() in ("0", "false", "no", "off"):
+        return []
+    skip = _not_found()
+    now = time.time()
+    todo = [n for n in ps_names if not fontmod.is_available(n) and now - skip.get(n, 0) > _NOT_FOUND_DAYS * 86400]
+    if not todo:
+        return []
+    loaded: list[str] = []
+    for ps in todo:
+        try:
+            path = download(ps)
+        except Offline:
+            print(f"WARNUNG: Google Fonts nicht erreichbar – Schrift '{ps}' nicht geladen", file=sys.stderr)
+            break
+        except Exception as e:
+            print(f"WARNUNG: Font {ps} konnte nicht geladen werden: {e}", file=sys.stderr)
+            continue
+        if path:
+            loaded.append(ps)
+            print(f"Schrift '{ps}' von Google Fonts geladen", file=sys.stderr)
+        else:
+            skip[ps] = now
+    try:
+        (user_fonts_dir() / _NOT_FOUND_FILE).write_text(json.dumps(skip, indent=1))
+    except OSError:
+        pass
+    if loaded:
+        refresh()
+    return loaded
 
 
 def refresh() -> None:

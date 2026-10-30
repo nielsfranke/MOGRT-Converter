@@ -158,6 +158,9 @@ def _look_at(eye: np.ndarray, target: np.ndarray) -> np.ndarray:
 class Renderer:
     def __init__(self, mogrt: Mogrt, values: dict[str, Any] | None = None, scale: float = 1.0):
         self.mogrt = mogrt
+        from ..google_fonts import ensure
+
+        ensure(mogrt.fonts)  # free fonts that are missing come from Google Fonts (once)
         self.ev = Evaluator(mogrt, values)
         self.ev.source_rect_fn = self.source_rect
         self.text = TextRenderer(self.ev)
