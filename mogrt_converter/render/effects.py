@@ -417,15 +417,28 @@ def apply_styles(ctx: EffectContext, img: skia.Image) -> skia.Image:
             f = skia.ImageFilters.Dilate(radius, radius)
             cf = skia.ColorFilters.Blend(color4f(col[:3]).toColor(), skia.BlendMode.kSrcIn)
             c.drawImage(original, 0, 0, skia.SamplingOptions(), skia.Paint(ImageFilter=f, ColorFilter=cf, Alphaf=op))
-    c.drawImage(original, 0, 0)
+    # overlays colour the layer itself, not the shadows/glows below it
+    body_s = _surface_like(img)
+    bc = body_s.getCanvas()
+    bc.drawImage(original, 0, 0)
     for g in active_styles(ctx.layer):
         kind = g.match_name.split("/")[0]
         p = _style_params(r, g, ctx.t)
         if kind == "solidFill":
             col = p.get("color", [1, 0, 0, 1])
             op = float(p.get("opacity", 100)) / 100
-            c.drawRect(skia.Rect.MakeWH(img.width(), img.height()),
-                       skia.Paint(Color4f=color4f(col[:3]), Alphaf=op, BlendMode=skia.BlendMode.kSrcATop))
+            mode = int(p.get("mode2", 1))
+            if mode == 1:
+                bc.drawRect(skia.Rect.MakeWH(img.width(), img.height()),
+                            skia.Paint(Color4f=color4f(col[:3]), Alphaf=op, BlendMode=skia.BlendMode.kSrcATop))
+            else:
+                arr = body_s.makeImageSnapshot().toarray(colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                                         alphaType=skia.AlphaType.kPremul_AlphaType).astype(np.float32) / 255.0
+                arr = _blend_over(arr, np.ones(arr.shape[:2], np.float32), col, op, mode)
+                bc.clear(skia.ColorTRANSPARENT)
+                bc.drawImage(skia.Image.fromarray(np.ascontiguousarray((np.clip(arr, 0, 1) * 255 + 0.5).astype(np.uint8)),
+                                                  colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                                  alphaType=skia.AlphaType.kPremul_AlphaType), 0, 0)
         elif kind == "gradientFill":
             from .paint import gradient_stops
 
@@ -457,14 +470,15 @@ def apply_styles(ctx: EffectContext, img: skia.Image) -> skia.Image:
             else:
                 shader = skia.GradientShader.MakeLinear(
                     [skia.Point(cx - dx * length / 2, cy - dy * length / 2), skia.Point(cx + dx * length / 2, cy + dy * length / 2)], cols, pos)
-            c.drawRect(skia.Rect.MakeWH(img.width(), img.height()),
-                       skia.Paint(Shader=shader, Alphaf=op, BlendMode=skia.BlendMode.kSrcATop))
+            bc.drawRect(skia.Rect.MakeWH(img.width(), img.height()),
+                        skia.Paint(Shader=shader, Alphaf=op, BlendMode=skia.BlendMode.kSrcATop))
         elif kind not in ("dropShadow", "frameFX", "outerGlow", "innerShadow", "innerGlow", "bevelEmboss"):
             if kind not in _warned:
                 _warned.add(kind)
                 import sys
 
                 print(f"WARNUNG: Ebenenstil '{g.name}' wird noch nicht unterstützt", file=sys.stderr)
+    c.drawImage(body_s.makeImageSnapshot(), 0, 0)
     inner = [(g.match_name.split("/")[0], _style_params(r, g, ctx.t)) for g in active_styles(ctx.layer)]
     inner = [(k, p) for k, p in inner if k in ("innerShadow", "innerGlow", "bevelEmboss")]
     if not inner:
