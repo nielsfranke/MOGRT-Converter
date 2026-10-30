@@ -357,9 +357,10 @@ def active_styles(layer: Any) -> list[Any]:
     if styles is None or not getattr(styles, "enabled", False):
         return []
     # py_aep reports the group as enabled as soon as one style is applied (like ExtendScript);
-    # the eyeball of "Layer Styles" itself is only in the raw flags
+    # the eyeball of "Layer Styles" itself is only in the raw flags; "hidden" is set when the styles
+    # were removed in AE (Layer > Layer Styles > Remove All keeps the data, AE ignores it)
     tdsb = getattr(styles, "_tdsb", None)
-    if tdsb is not None and not getattr(tdsb, "enabled", True):
+    if tdsb is not None and (not getattr(tdsb, "enabled", True) or getattr(tdsb, "hidden", False)):
         return []
     return [g for g in styles if getattr(g, "enabled", False) and "/" in g.match_name]
 
