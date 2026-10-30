@@ -7,7 +7,7 @@ import math
 import numpy as np
 import skia
 
-from .effects_extra import _arr, _img, _sample, _surface, _vnoise3, effect  # noqa: F401
+from .effects_extra import _arr, _fraction, _img, _sample, _surface, _vnoise3, effect  # noqa: F401
 
 
 # --------------------------------------------------------------------------- helpers
@@ -352,6 +352,135 @@ def cc_light_sweep(ctx, p, img):
     else:
         arr[..., :3] = rgb + col * light[..., None]
     return _img(arr)
+
+
+_FLARE: dict | None = None
+
+
+def _flare_table() -> dict:
+    """Radial RGB profiles of AE's Lens Flare per lens type and brightness, measured from AE 2025
+    renders of a centred flare on a 1920 px wide black solid (the flare scales with layer width)."""
+    global _FLARE
+    if _FLARE is None:
+        from pathlib import Path
+
+        d = np.load(Path(__file__).with_name("data") / "lens_flare.npz")
+        _FLARE = {k: d[k] for k in d.files}
+    return _FLARE
+
+
+@effect("ADBE Lens Flare")
+def lens_flare(ctx, p, img):
+    # 0001 flare center, 0002 flare brightness (%), 0004 lens type (1 50-300mm zoom, 2 35mm, 3 105mm),
+    # 0003 blend with original (%). Only the rotationally symmetric glow and rings are reproduced; the
+    # ghost discs along the axis through the layer centre are left out.
+    tab = _flare_table()
+    c = p.get("0001", [0, 0])
+    c = list(c) if isinstance(c, (list, tuple)) else [0, 0]
+    bright = float(p.get("0002", 100) or 0)
+    lens = min(3, max(1, int(p.get("0004", 1) or 1)))
+    mix = 1.0 - _fraction(p.get("0003", 0))
+    if bright <= 0 or mix <= 0:
+        return img
+    bs = tab["brightness"]
+    prof = tab["profiles"][lens - 1].astype(np.float32) / 255.0  # (brightness, radius px @ width, rgb)
+    i = int(np.clip(np.searchsorted(bs, bright) - 1, 0, len(bs) - 2))
+    f = float(np.clip((bright - bs[i]) / (bs[i + 1] - bs[i]), 0, 1.5 if i == len(bs) - 2 else 1))
+    radial = prof[i] * (1 - f) + prof[i + 1] * f
+    arr = _arr(img)
+    h, w = arr.shape[:2]
+    lx, ly = _grid_xy(ctx, h, w)
+    lw = max(1.0, ctx.layer_rect().width())
+    r = np.hypot(lx - c[0], ly - c[1]) * (float(tab["width"]) / lw)
+    n = radial.shape[0] - 1
+    tail = np.exp(-np.maximum(r - n, 0) / 150.0)[..., None]  # beyond the measured radius: fade out
+    ri = np.clip(r, 0, n)
+    i0 = np.floor(ri).astype(np.int32)
+    i1 = np.minimum(i0 + 1, n)
+    fr = (ri - i0)[..., None]
+    flare = (radial[i0] * (1 - fr) + radial[i1] * fr) * tail * mix
+    rgb = arr[..., :3] * arr[..., 3:4]
+    rgb = 1 - (1 - rgb) * (1 - flare)  # screen the flare onto the (premultiplied) layer
+    alpha = np.maximum(arr[..., 3], flare.max(-1))
+    arr[..., :3] = rgb / np.maximum(alpha, 1e-6)[..., None]
+    arr[..., 3] = alpha
+    return _img(arr)
+
+
+def _radial_shadow_pad(p) -> float:
+    if not int(p.get("0009", 0) or 0):  # Resize Layer off: the shadow stays inside the layer
+        return 0.0
+    return float(p.get("0004", 0) or 0) * 20 + float(p.get("0005", 0) or 0) * 2 + 2
+
+
+@effect("ADBE Radial Shadow", pad=_radial_shadow_pad)
+def radial_shadow(ctx, p, img):
+    # 0001 color, 0002 opacity (0..1), 0003 light source, 0004 projection distance, 0005 softness,
+    # 0006 render (1 regular, 2 glass edge), 0007 color influence, 0008 shadow only, 0009 resize layer.
+    # Measured in AE: the shadow is the layer scaled about the light source by 1 + distance / 100.
+    op = _fraction(p.get("0002", 0.5))
+    if op <= 0:
+        return img
+    col = list(p.get("0001", [0, 0, 0, 1]))[:3]
+    light = p.get("0003", [0, 0])
+    light = list(light) if isinstance(light, (list, tuple)) else [0, 0]
+    k = 1.0 + float(p.get("0004", 0) or 0) / 100.0
+    lx = (light[0] - ctx.bounds.left()) * ctx.res
+    ly = (light[1] - ctx.bounds.top()) * ctx.res
+    s = _surface(img)
+    c = s.getCanvas()
+    c.translate(lx, ly)
+    c.scale(k, k)
+    c.translate(-lx, -ly)
+    paint = skia.Paint(AntiAlias=True, Alphaf=op,
+                       ColorFilter=skia.ColorFilters.Blend(skia.Color4f(col[0], col[1], col[2], 1).toColor(), skia.BlendMode.kSrcIn))
+    soft = float(p.get("0005", 0) or 0) * ctx.res
+    if soft > 0:
+        paint.setImageFilter(skia.ImageFilters.Blur(soft / 5, soft / 5, skia.TileMode.kDecal))
+    c.drawImage(img, 0, 0, skia.SamplingOptions(skia.FilterMode.kLinear), paint)
+    c.resetMatrix()
+    if not int(p.get("0008", 0) or 0):
+        c.drawImage(img, 0, 0)
+    return s.makeImageSnapshot()
+
+
+@effect("CC Ball Action")
+def cc_ball_action(ctx, p, img):
+    # 0001 scatter, 0002 rotation axis, 0003 rotation, 0004 twist property, 0005 twist angle,
+    # 0006 grid spacing, 0007 ball size (%), 0008 instability state. The layer becomes a grid of
+    # balls (period 2 * (ceil(spacing) + 1) px, radius period * size / 100 - 0.5) coloured by the layer at each
+    # ball's centre and lit slightly brighter towards the rim (measured in AE). Scatter, rotation and
+    # twist are not reproduced.
+    period = 2.0 * (math.ceil(float(p.get("0006", 8) or 0)) + 1.0) * ctx.res
+    radius = period * float(p.get("0007", 100) or 0) / 100.0 - 0.5 * ctx.res
+    a = _arr(img)
+    h, w = a.shape[:2]
+    out = np.zeros_like(a)
+    if radius <= 0.05:
+        return _img(out)
+    ny, nx = int(h // period), int(w // period)  # only whole grid cells get a ball
+    cy = np.minimum(((np.arange(ny) + 0.5) * period).astype(int), h - 1)
+    cx = np.minimum(((np.arange(nx) + 0.5) * period).astype(int), w - 1)
+    centre = a[cy][:, cx]  # colour of every ball (ny, nx, 4)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32) + 0.5
+    gy, gx = np.floor(yy / period).astype(int), np.floor(xx / period).astype(int)
+    m = int(math.ceil(radius / period))
+    for dy in range(-m, m + 1):  # later balls (row, then column) lie on top
+        for dx in range(-m, m + 1):
+            by, bx = gy + dy, gx + dx
+            ok = (by >= 0) & (by < ny) & (bx >= 0) & (bx < nx)
+            byc, bxc = np.clip(by, 0, ny - 1), np.clip(bx, 0, nx - 1)
+            rr = np.hypot(xx - (bxc + 0.5) * period - 0.5, yy - (byc + 0.5) * period - 0.5) / radius
+            col = centre[byc, bxc]
+            cov = np.clip((1 - rr) * radius + 0.5, 0, 1) * col[..., 3] * ok
+            if not cov.any():
+                continue
+            rgb = np.clip(col[..., :3] * (1 + 0.34 * np.minimum(rr, 1) ** 2)[..., None], 0, 1)
+            ca = cov[..., None]
+            a_out = ca + out[..., 3:] * (1 - ca)
+            out[..., :3] = (rgb * ca + out[..., :3] * out[..., 3:] * (1 - ca)) / np.maximum(a_out, 1e-6)
+            out[..., 3:] = a_out
+    return _img(out)
 
 
 # --------------------------------------------------------------------------- generators

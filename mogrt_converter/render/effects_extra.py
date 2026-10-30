@@ -70,6 +70,25 @@ def fast_blur(ctx, p, img):
     return _blur_dims(img, float(p.get("Blurriness", 0)) * ctx.res / 2.0, int(p.get("Blur Dimensions", 1)))
 
 
+@effect("ADBE Unsharp Mask2")
+def unsharp_mask(ctx, p, img):
+    # 0001 amount (%), 0002 radius, 0003 threshold (0..255). Like AE, only the colour is sharpened
+    # (unpremultiplied); the alpha channel stays as it is. Blur width fitted to AE renders.
+    amount = float(p.get("0001", 50) or 0) / 100.0
+    radius = float(p.get("0002", 1) or 0) * ctx.res
+    if amount <= 0 or radius <= 0:
+        return img
+    a = _arr(img)
+    opaque = a.copy()
+    opaque[..., 3] = 1.0
+    d = a[..., :3] - _arr(_blur_dims(_img(opaque), radius * 0.35, 1))[..., :3]
+    thr = float(p.get("0003", 0) or 0) / 255.0
+    if thr > 0:
+        d = np.where(np.abs(d) > thr, d, 0)
+    a[..., :3] = a[..., :3] + amount * d
+    return _img(a)
+
+
 @effect("ADBE Box Blur2", pad=lambda p: float(p.get("Blur Radius", 0)) * 2 + 2)
 def box_blur(ctx, p, img):
     r = float(p.get("Blur Radius", 0)) * ctx.res

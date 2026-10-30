@@ -16,6 +16,7 @@ ICONS = ROOT / "packaging" / "icons"
 
 datas = [
     (str(ROOT / "mogrt_converter" / "app" / "static"), "mogrt_converter/app/static"),
+    (str(ROOT / "mogrt_converter" / "render" / "data"), "mogrt_converter/render/data"),
     (str(ROOT / "fonts"), "fonts"),
 ]
 binaries = []
