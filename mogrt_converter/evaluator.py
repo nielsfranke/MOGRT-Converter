@@ -80,6 +80,15 @@ _ALIASES = {
     "roundness": ("ADBE Vector Rect Roundness",),
     "pointOfInterest": ("ADBE Anchor Point",),
     "zoom": ("ADBE Camera Zoom",),
+    # text animator properties (display names may be localized)
+    "fillColor": ("ADBE Text Fill Color",),
+    "strokeColor": ("ADBE Text Stroke Color",),
+    "fillOpacity": ("ADBE Text Fill Opacity",),
+    "strokeOpacity": ("ADBE Text Stroke Opacity",),
+    "trackingAmount": ("ADBE Text Tracking Amount",),
+    "lineSpacing": ("ADBE Text Line Spacing",),
+    "blur": ("ADBE Text Blur",),
+    "skew": ("ADBE Text Skew",),
 }
 
 
@@ -138,6 +147,11 @@ function __proxy(ref) {
     }
   });
 }
+// properties often resolve straight to their value; keep `.value` (and sourceText's `.text`) working on it
+[Number, String, Boolean, Array].forEach(function(C) {
+  Object.defineProperty(C.prototype, 'value', { get: function() { return Array.isArray(this) ? this : this.valueOf(); }, configurable: true });
+});
+Object.defineProperty(String.prototype, 'text', { get: function() { return this.valueOf(); }, configurable: true });
 function __num(v) { return (v && v.__ref) ? v.valueOf() : v; }
 function add(a, b) { if (Array.isArray(a)) return a.map(function(x, i) { return x + (Array.isArray(b) ? (b[i] || 0) : b); }); return a + b; }
 function sub(a, b) { if (Array.isArray(a)) return a.map(function(x, i) { return x - (Array.isArray(b) ? (b[i] || 0) : b); }); return a - b; }
@@ -149,6 +163,29 @@ function normalize(a) { var l = length(a); return div(a, l || 1); }
 function dot(a, b) { return a.reduce(function(s, x, i) { return s + x * b[i]; }, 0); }
 function degreesToRadians(d) { return d * Math.PI / 180; }
 function radiansToDegrees(r) { return r * 180 / Math.PI; }
+function rgbToHsl(c) {
+  var r = c[0], g = c[1], b = c[2], a = c.length > 3 ? c[3] : 1;
+  var mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, h = 0, s = 0, d = mx - mn;
+  if (d > 0) {
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx === r) h = (g - b) / d + (g < b ? 6 : 0); else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return [h, s, l, a];
+}
+function hslToRgb(c) {
+  var h = c[0] - Math.floor(c[0]), s = c[1], l = c[2], a = c.length > 3 ? c[3] : 1;
+  if (s === 0) return [l, l, l, a];
+  var q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  function f(t) { t = t - Math.floor(t); return t < 1 / 6 ? p + (q - p) * 6 * t : t < 0.5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; }
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3), a];
+}
+function hexToRgb(hex) {
+  var s = String(hex).replace(/^(#|0x)/i, "");
+  if (s.length === 3) s = s.replace(/./g, "$&$&");
+  var v = [0, 2, 4, 6].map(function(i) { return i < s.length ? parseInt(s.substr(i, 2), 16) / 255 : 1; });
+  return s.length >= 8 ? [v[1], v[2], v[3], v[0]] : v;
+}
 function __lerp(a, b, f) { if (Array.isArray(a)) return a.map(function(x, i) { return x + (b[i] - x) * f; }); return a + (b - a) * f; }
 function __interp(kind, t, tMin, tMax, v1, v2) {
   if (v1 === undefined) { v1 = tMin; v2 = tMax; tMin = 0; tMax = 1; }
@@ -547,7 +584,10 @@ class Evaluator:
                 return self._node(p, t)
             return self._val(None)
         if kind == "group":
-            if name in ("content", "effect", "property", "propertyGroup"):
+            if name == "property" and obj.match_name == "ADBE Text Animator":
+                # text.animator("Animator 1").property.fillColor: the animator's property group
+                return json.dumps({"t": "r", "r": self._ref(obj.property("ADBE Text Animator Properties"), "group")})
+            if name in ("content", "effect", "property", "propertyGroup", "animator", "selector"):
                 return json.dumps({"t": "m", "r": ref, "n": name})
             if name == "name":
                 return self._val(obj.name)
@@ -676,6 +716,13 @@ class Evaluator:
         if name == "mask":
             p = find_child(obj.property("ADBE Mask Parade"), args[0])
             return json.dumps({"t": "r", "r": self._ref(p, "group")}) if p else self._val(None)
+        if name in ("animator", "selector"):
+            # text.animator("Animator 1"), text.animator(1).selector("Range Selector 1")
+            sub = "ADBE Text Animators" if name == "animator" else "ADBE Text Selectors"
+            p = find_child(obj.property(sub), args[0])
+            if p is None:
+                raise ValueError(f"{name} {args[0]!r} nicht gefunden")
+            return json.dumps({"t": "r", "r": self._ref(p, "group")})
         if name == "property":
             p = find_child(obj, args[0])
             return self._node(p, t) if p is not None else self._val(None)
