@@ -678,6 +678,25 @@ class Renderer:
 
     def draw_layer(self, canvas: skia.Canvas, comp: Any, layer: Any, t: float, scale: float,
                    m: np.ndarray, op_mult: float, camera: Camera | None, is3d: bool) -> None:
+        if not (getattr(layer, "preserve_transparency", False) and self._surfaces):
+            self._draw_layer(canvas, comp, layer, t, scale, m, op_mult, camera, is3d)
+            return
+        # "Preserve Underlying Transparency" (T switch): the layer changes colours only where
+        # something lies below, and the alpha stays that of the layers below
+        surf = self._surfaces[-1]
+        below = surf.makeImageSnapshot().toarray(colorType=skia.ColorType.kRGBA_8888_ColorType)[..., 3]
+        self._draw_layer(canvas, comp, layer, t, scale, m, op_mult, camera, is3d)
+        out = surf.makeImageSnapshot().toarray(colorType=skia.ColorType.kRGBA_8888_ColorType)
+        out[..., 3] = below
+        out[below == 0] = 0
+        canvas.save()
+        canvas.resetMatrix()
+        canvas.clear(skia.ColorTRANSPARENT)
+        canvas.drawImage(skia.Image.fromarray(np.ascontiguousarray(out), colorType=skia.ColorType.kRGBA_8888_ColorType), 0, 0)
+        canvas.restore()
+
+    def _draw_layer(self, canvas: skia.Canvas, comp: Any, layer: Any, t: float, scale: float,
+                    m: np.ndarray, op_mult: float, camera: Camera | None, is3d: bool) -> None:
         opacity = self._val(layer.transform, t, "ADBE Opacity", default=100.0) / 100.0 * op_mult
         if opacity <= 0.0005:
             return
@@ -874,9 +893,21 @@ class Renderer:
             add_contour(p, contour_from_shape(shape))
             feather = self._val(mk, t, "ADBE Mask Feather", default=[0, 0]) or [0, 0]
             f = max(feather) if isinstance(feather, list) else float(feather)
+            f += max(0.0, float(self._val(mk, t, "ADBE Mask Offset", default=0.0) or 0.0))
             b = p.computeTightBounds()
             out.join(skia.Rect.MakeLTRB(b.left() - f, b.top() - f, b.right() + f, b.bottom() + f))
         return out
+
+    @staticmethod
+    def _expand(path: skia.Path, e: float) -> skia.Path:
+        """Mask Expansion: grow (e > 0) or shrink the shape by e units with round corners."""
+        if abs(e) < 1e-3:
+            return path
+        stroke = skia.Path()
+        skia.Paint(Style=skia.Paint.kStroke_Style, StrokeWidth=2 * abs(e),
+                   StrokeJoin=skia.Paint.kRound_Join).getFillPath(path, stroke)
+        r = skia.Op(path, stroke, skia.PathOp.kUnion_PathOp if e > 0 else skia.PathOp.kDifference_PathOp)
+        return r if r is not None else path
 
     def _apply_masks(self, c: skia.Canvas, layer: Any, t: float, bounds: skia.Rect) -> None:
         parade = self._prop(layer, "ADBE Mask Parade")
@@ -903,6 +934,7 @@ class Renderer:
             else:
                 opacities.append(mop)
                 add_contour(p, contour_from_shape(shape))
+                p = self._expand(p, float(self._val(mk, t, "ADBE Mask Offset", default=0.0) or 0.0))
                 if bool(getattr(mk, "inverted", False)):
                     p.toggleInverseFillType()
             if coverage is None:
