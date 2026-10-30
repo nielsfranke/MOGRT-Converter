@@ -23,6 +23,7 @@ class Entry:
 class PaintItem:
     prop: Any
     refs: list[tuple[Entry, skia.Matrix]]
+    blend: skia.BlendMode | None = None
 
 
 @dataclass
@@ -30,6 +31,30 @@ class GroupNode:
     matrix: skia.Matrix
     opacity: float
     items: list[Any] = field(default_factory=list)  # PaintItem | GroupNode (AE order, top first)
+    blend: skia.BlendMode | None = None
+
+
+# "ADBE Vector Blend Mode" values, measured in AE (gaps are menu separators / Dissolve)
+_SHAPE_BLEND = {
+    3: skia.BlendMode.kDarken, 4: skia.BlendMode.kMultiply, 5: skia.BlendMode.kColorBurn,
+    6: skia.BlendMode.kMultiply, 7: skia.BlendMode.kDarken, 9: skia.BlendMode.kLighten,
+    10: skia.BlendMode.kScreen, 11: skia.BlendMode.kColorDodge, 12: skia.BlendMode.kPlus,
+    13: skia.BlendMode.kLighten, 15: skia.BlendMode.kOverlay, 16: skia.BlendMode.kSoftLight,
+    17: skia.BlendMode.kHardLight, 18: skia.BlendMode.kHardLight, 19: skia.BlendMode.kHardLight,
+    20: skia.BlendMode.kHardLight, 21: skia.BlendMode.kHardLight, 23: skia.BlendMode.kDifference,
+    24: skia.BlendMode.kExclusion, 26: skia.BlendMode.kHue, 27: skia.BlendMode.kSaturation,
+    28: skia.BlendMode.kColor, 29: skia.BlendMode.kLuminosity,
+}
+
+
+def _blend(ev: Evaluator, item: Any, t: float) -> skia.BlendMode | None:
+    try:
+        p = item.property("ADBE Vector Blend Mode")
+    except Exception:
+        return None
+    if p is None:
+        return None
+    return _SHAPE_BLEND.get(int(ev.value(p, t) or 1))
 
 
 def _v(ev: Evaluator, group: Any, match: str, t: float, default: Any = None) -> Any:
@@ -122,6 +147,7 @@ def build_group(ev: Evaluator, contents: Any, matrix: skia.Matrix, opacity: floa
             sub_contents = item.property("ADBE Vectors Group")
             m, op = group_matrix(ev, item.property("ADBE Vector Transform Group"), t)
             child, child_entries = build_group(ev, sub_contents, m, op, t)
+            child.blend = _blend(ev, item, t)
             node.items.append(child)
             for e, em in child_entries:
                 mm = skia.Matrix.Concat(m, em)
@@ -131,7 +157,11 @@ def build_group(ev: Evaluator, contents: Any, matrix: skia.Matrix, opacity: floa
             if g is not None:
                 entries.append((Entry(g), skia.Matrix()))
         elif mn in PAINTS:
-            node.items.append(PaintItem(item, list(entries)))
+            paint = PaintItem(item, list(entries), _blend(ev, item, t))
+            if node.items and int(_v(ev, item, "ADBE Vector Composite Order", t, 1) or 1) == 2:
+                node.items.insert(len(node.items) - 1, paint)  # "Above Previous in Same Group"
+            else:
+                node.items.append(paint)
         elif mn == "ADBE Vector Filter - Trim":
             s = _v(ev, item, "ADBE Vector Trim Start", t, 0.0)
             e = _v(ev, item, "ADBE Vector Trim End", t, 100.0)
@@ -312,7 +342,12 @@ def draw_group(ev: Evaluator, canvas: skia.Canvas, node: GroupNode, t: float, op
     op = opacity * node.opacity
     for it in reversed(node.items):
         if isinstance(it, GroupNode):
-            draw_group(ev, canvas, it, t, op)
+            if it.blend is not None:
+                canvas.saveLayer(None, skia.Paint(BlendMode=it.blend))
+                draw_group(ev, canvas, it, t, op)
+                canvas.restore()
+            else:
+                draw_group(ev, canvas, it, t, op)
             continue
         if not it.refs:
             continue
@@ -326,6 +361,8 @@ def draw_group(ev: Evaluator, canvas: skia.Canvas, node: GroupNode, t: float, op
             path.addPath(en.geo.to_path(), m)
         if even_odd:
             path.setFillType(skia.PathFillType.kEvenOdd)
+        if it.blend is not None:
+            paint.setBlendMode(it.blend)
         canvas.drawPath(path, paint)
     canvas.restore()
 
@@ -336,8 +373,19 @@ def shape_layer_root(ev: Evaluator, layer: Any, t: float) -> GroupNode:
     return node
 
 
+def _uses_blend(node: GroupNode) -> bool:
+    return any(it.blend is not None or (isinstance(it, GroupNode) and _uses_blend(it)) for it in node.items)
+
+
 def draw_shape_layer(ev: Evaluator, canvas: skia.Canvas, layer: Any, t: float) -> None:
-    draw_group(ev, canvas, shape_layer_root(ev, layer, t), t)
+    root = shape_layer_root(ev, layer, t)
+    if _uses_blend(root):
+        # blend modes inside a shape layer only see the layer's own contents
+        canvas.saveLayer(None, None)
+        draw_group(ev, canvas, root, t)
+        canvas.restore()
+    else:
+        draw_group(ev, canvas, root, t)
 
 
 def shape_bounds(ev: Evaluator, layer: Any, t: float) -> skia.Rect:
