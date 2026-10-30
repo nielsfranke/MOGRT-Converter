@@ -18,7 +18,7 @@ from .paint import color4f
 AUTO_LEADING = 1.2
 
 
-@dataclass
+@dataclass(eq=False)  # hashable by identity (font_data() caches the instances)
 class FontData:
     path: str
     index: int
@@ -63,14 +63,80 @@ class TextLayout:
     style: Any = None
 
 
-def _shape(text: str, fd: FontData, size: float) -> list[tuple[int, float, int]]:
-    """Return (glyph id, advance in px, cluster) per glyph."""
+# Optical kerning (Character panel "Optical"): AE spaces each pair from the glyph shapes and
+# ignores the font's kerning table. Model fitted to AE 2025 measurements (11 fonts, ~2000-3800
+# pairs each, tools/ae_compare.py-style ExtendScript probes): per scanline where both glyphs have
+# ink, the horizontal gap is taken, capped at (smallest gap + _OPT_DEPTH), and averaged; the pair
+# kern moves that mean gap _OPT_SLOPE of the way towards _OPT_TARGET. Pairs with a space get 0.
+# Mean error vs AE ≈ 1 % of the em per pair. All values in 1/1000 em.
+_OPT_DEPTH = 60.0
+_OPT_TARGET = 107.8
+_OPT_SLOPE = 0.467
+_OPT_ROWS = 400  # scanlines per em
+
+
+@lru_cache(maxsize=4096)
+def _glyph_profile(fd: FontData, gid: int) -> tuple[int, np.ndarray, np.ndarray] | None:
+    """(first row, left edge, right edge) of a glyph in 1/1000 em per scanline (NaN = no ink)."""
+    font = skia.Font(fd.typeface, _OPT_ROWS)
+    path = font.getPath(gid)
+    if path is None or path.isEmpty():
+        return None
+    b = path.getBounds()
+    top, bottom = math.floor(b.top()), math.ceil(b.bottom())
+    left = math.floor(b.left())
+    w, h = max(1, math.ceil(b.right()) - left + 1), max(1, bottom - top)
+    surf = skia.Surface(w, h)
+    c = surf.getCanvas()
+    c.clear(skia.ColorTRANSPARENT)
+    c.translate(-left, -top)
+    c.drawPath(path, skia.Paint(AntiAlias=False))
+    ink = surf.makeImageSnapshot().toarray()[..., 3] > 0
+    has = ink.any(1)
+    lft = np.where(has, ink.argmax(1), np.nan) + left
+    rgt = np.where(has, w - ink[:, ::-1].argmax(1), np.nan) + left
+    k = 1000.0 / _OPT_ROWS
+    return top, lft * k, rgt * k
+
+
+@lru_cache(maxsize=65536)
+def _optical_kern(fd: FontData, a: int, b: int, adv_a: float) -> float:
+    """Kern for glyph pair (a, b) in 1/1000 em; adv_a = advance of a in 1/1000 em."""
+    pa, pb = _glyph_profile(fd, a), _glyph_profile(fd, b)
+    if pa is None or pb is None:
+        return 0.0
+    lo, hi = max(pa[0], pb[0]), min(pa[0] + len(pa[1]), pb[0] + len(pb[1]))
+    if hi <= lo:
+        return 0.0
+    gap = adv_a + pb[1][lo - pb[0]:hi - pb[0]] - pa[2][lo - pa[0]:hi - pa[0]]
+    gap = gap[np.isfinite(gap)]
+    if not gap.size:
+        return 0.0
+    g = np.minimum(gap, gap.min() + _OPT_DEPTH).mean()
+    return _OPT_SLOPE * (_OPT_TARGET - g)
+
+
+def _shape(text: str, fd: FontData, size: float, kerning: str = "metric") -> list[tuple[int, float, int]]:
+    """Return (glyph id, advance in px, cluster) per glyph. kerning: metric, optical or none."""
     buf = hb.Buffer()
     buf.add_str(text)
     buf.guess_segment_properties()
-    hb.shape(fd.hb_font, buf, {"liga": False, "clig": False, "kern": True})
+    hb.shape(fd.hb_font, buf, {"liga": False, "clig": False, "kern": kerning == "metric"})
     scale = size / fd.upem
-    return [(info.codepoint, pos.x_advance * scale, info.cluster) for info, pos in zip(buf.glyph_infos, buf.glyph_positions)]
+    out = [(info.codepoint, pos.x_advance * scale, info.cluster) for info, pos in zip(buf.glyph_infos, buf.glyph_positions)]
+    if kerning == "optical":
+        em = size / 1000.0
+        for i in range(len(out) - 1):
+            (ga, adv, cl), (gb, _, clb) = out[i], out[i + 1]
+            if text[cl:cl + 1].isspace() or text[clb:clb + 1].isspace():
+                continue
+            out[i] = (ga, adv + _optical_kern(fd, ga, gb, adv / em) * em, cl)
+    return out
+
+
+def _kerning_mode(doc: Any) -> str:
+    name = getattr(getattr(doc, "auto_kern_type", None), "name", "METRIC_KERN")
+    return "optical" if "OPTICAL" in name else "none" if name == "NO_AUTO_KERN" else "metric"
 
 
 def _justify_offset(just: int, width: float) -> float:
@@ -97,6 +163,7 @@ def layout_text(tv: TextValue, char_tracking: list[float] | None = None) -> Text
     leading = size * AUTO_LEADING if getattr(doc, "auto_leading", False) else float(doc.leading or size * AUTO_LEADING)
     shift = float(getattr(doc, "baseline_shift", 0) or 0)  # positive raises the text
     just = doc.justification
+    kerning = _kerning_mode(doc)
     box = bool(getattr(doc, "box_text", False)) and doc.box_text_size is not None
 
     out = TextLayout(style=doc)
@@ -105,7 +172,7 @@ def layout_text(tv: TextValue, char_tracking: list[float] | None = None) -> Text
     char_base = 0
     box_w = float(doc.box_text_size[0]) if box else None
     for para in paragraphs:
-        shaped = _shape(para, fd, size) if para else []
+        shaped = _shape(para, fd, size, kerning) if para else []
         items = []
         for gid, adv, cl in shaped:
             ci = char_base + cl
