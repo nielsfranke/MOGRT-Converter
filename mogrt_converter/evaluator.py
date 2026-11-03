@@ -365,7 +365,11 @@ class Evaluator:
         for c in self.mogrt.controls:
             if not c.editable:
                 continue
-            val = values.get(c.id, values.get(c.name, c.default))
+            val = values.get(c.id)
+            if val is None:
+                val = values.get(c.name)
+            if val is None:  # omitted (or null): template default. "" is an explicitly empty text
+                val = c.default
             ctl = ctrls.get(c.id)
             if ctl is None:
                 continue

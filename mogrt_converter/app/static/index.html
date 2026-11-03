@@ -350,7 +350,7 @@ table.batch .acts button:hover { color: var(--text); }
       <button class="icon-btn" id="bImport">CSV importieren</button>
       <button class="icon-btn" id="bTemplate">CSV-Vorlage speichern</button>
       <button class="icon-btn" id="bClose" aria-label="Schließen">Schließen</button>
-      <p>Jede Zeile wird eine eigene Datei. Leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.</p>
+      <p>Jede Zeile wird eine eigene Datei. Leere Textfelder bleiben leer, andere leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.</p>
     </div>
     <div class="sheet-body"><table class="batch" id="batchTable"></table></div>
     <div class="sheet-foot"><span class="info" id="bInfo"></span><button class="render-btn" id="bRender">Rendern</button></div>
@@ -433,7 +433,7 @@ const EN = {
   "CSV importieren": "Import CSV",
   "CSV-Vorlage speichern": "Save CSV template",
   "Schließen": "Close",
-  "Jede Zeile wird eine eigene Datei. Leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.": "Each row becomes its own file. Empty cells use the template default. Import tables from Excel or Numbers as CSV: columns are named like the controls, plus optional “filename” and “duration”.",
+  "Jede Zeile wird eine eigene Datei. Leere Textfelder bleiben leer, andere leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.": "Each row becomes its own file. Empty text cells stay empty, other empty cells use the template default. Import tables from Excel or Numbers as CSV: columns are named like the controls, plus optional “filename” and “duration”.",
   "Ändern fehlgeschlagen: {0}": "Change failed: {0}",
   "Noch keine Vorlagen. Füge oben einen Ordner oder einzelne Dateien hinzu – oder ziehe .mogrt-Dateien in dieses Fenster.": "No templates yet. Add a folder or individual files above – or drop .mogrt files into this window.",
   "Leer – Vorlagen hierher ziehen oder per Rechtsklick hinzufügen.": "Empty – drag templates here or add them via right-click.",
@@ -615,7 +615,7 @@ const ZH = {
   "CSV importieren": "导入 CSV",
   "CSV-Vorlage speichern": "保存 CSV 模板",
   "Schließen": "关闭",
-  "Jede Zeile wird eine eigene Datei. Leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.": "每一行会生成一个独立文件。空白的单元格使用模板的默认值。可将 Excel 或 Numbers 表格以 CSV 格式导入：列名与控件名称相同，另可选填“文件名”和“时长”。",
+  "Jede Zeile wird eine eigene Datei. Leere Textfelder bleiben leer, andere leere Felder nutzen den Standardwert der Vorlage. Tabellen aus Excel oder Numbers importierst du als CSV: Spalten heißen wie die Regler, dazu optional „Dateiname“ und „Dauer“.": "每一行会生成一个独立文件。空白的文字单元格保持为空，其他空白单元格使用模板的默认值。可将 Excel 或 Numbers 表格以 CSV 格式导入：列名与控件名称相同，另可选填“文件名”和“时长”。",
   "Ändern fehlgeschlagen: {0}": "更改失败：{0}",
   "Noch keine Vorlagen. Füge oben einen Ordner oder einzelne Dateien hinzu – oder ziehe .mogrt-Dateien in dieses Fenster.": "还没有模板。请在上方添加文件夹或单个文件，或者将 .mogrt 文件拖入此窗口。",
   "Leer – Vorlagen hierher ziehen oder per Rechtsklick hinzufügen.": "空 – 将模板拖到此处，或通过右键添加。",

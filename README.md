@@ -80,11 +80,15 @@ mogrt still template.mogrt -t 2.5 -o preview.png           # single frame
 mogrt render template.mogrt --set "Title=Jane Doe" --set "Subtitle=Head of Communications" -o lower_third
 mogrt render template.mogrt -d 8 -o lower_third_8s                   # new duration (intro/outro kept)
 mogrt render template.mogrt --offset 0,-300 -o lower_third_up        # 300 px higher (also --position, --motion-scale, --rotation, --opacity)
+mogrt render template.mogrt --set "Subtitle=" -o title_only           # empty value = no text (omitted controls keep their default)
+mogrt render template.mogrt --align-text ink-left -o call_out         # text lines optically flush left (see below)
 mogrt batch template.mogrt --template names.csv                       # CSV template with all columns
 mogrt batch template.mogrt names.csv -o renders/                      # one file per row
 ```
 
-**CSV format:** column headers are the template's control names (see `mogrt info`), plus optional `filename` and `duration`. Separator semicolon, comma or tab, UTF-8 or Windows encoding. Empty cells use the default. Colours as `#RRGGBB`, positions as `960 540`, checkboxes as `yes`/`no`. Multi-line text as in Excel (Alt+Enter) or with `\n`.
+**CSV format:** column headers are the template's control names (see `mogrt info`), plus optional `filename` and `duration`. Separator semicolon, comma or tab, UTF-8 or Windows encoding. An empty text cell renders no text; other empty cells and missing columns use the default. Colours as `#RRGGBB`, positions as `960 540`, checkboxes as `yes`/`no`. Multi-line text as in Excel (Alt+Enter) or with `\n`.
+
+**Optical left alignment** (`--align-text ink-left`, also for `still` and `batch`): After Effects aligns the glyph origins of text layers, so a bold title above a regular subtitle is only flush left for the template's sample text. Lines that start with letters with a different side bearing (W, T, A …) end up a few pixels apart – After Effects renders the same. `ink-left` moves every line of the left-aligned text layers in the graphic so that its visible left edge sits on the topmost text layer's edge. The offset is measured once and stays the same on every frame (it scales with the layer). Lines more than 0.3 em away from that edge (indents, second columns) are left alone. Default `none` renders exactly like After Effects.
 
 In the Mac app the command is `"/Applications/MOGRT Converter.app/Contents/MacOS/MOGRT Converter"`, on Windows `mogrt.exe` in the app folder.
 Formats (`-f`): `prores4444` (default), `prores4444xq`, `png-mov`, `h264`.
@@ -103,7 +107,7 @@ mogrt skill --install                                 # install the instructions
 
 After `mogrt skill --install`, a sentence like "make lower thirds for Jane Doe (Head of Communications) and John Roe (Project Lead), 6 seconds" is enough in Claude Code. Claude finds the template, checks a still for text that is too long and renders into the app's render folder, where the Resolve script picks the clips up. `mogrt skill` without options prints the instructions, e.g. for other agents' `AGENTS.md`.
 
-**MCP server** for Claude Desktop and other MCP clients (no terminal needed): `mogrt mcp` provides the tools `list_templates`, `template_info`, `preview_still` (returns the image, so the model sees whether a name is too long), `render` and `render_batch`. `mogrt mcp --config` prints the entry for `claude_desktop_config.json` (Claude Desktop: Settings → Developer → Edit Config) and the command for Claude Code.
+**MCP server** for Claude Desktop and other MCP clients (no terminal needed): `mogrt mcp` provides the tools `list_templates`, `template_info`, `preview_still` (returns the image, so the model sees whether a name is too long), `render` and `render_batch`. In `values`, `""` means no text, omitted or `null` controls keep their default. `preview_still`, `render` and `render_batch` accept `"align_text": "ink-left"` for the optical left alignment described above. `mogrt mcp --config` prints the entry for `claude_desktop_config.json` (Claude Desktop: Settings → Developer → Edit Config) and the command for Claude Code.
 
 ## What is supported
 

@@ -48,4 +48,4 @@ def test_errors_as_json(lib, capsys):
 def test_batch_rows_from_json(tmp_path):
     p = tmp_path / "rows.json"
     p.write_text(json.dumps([{"Titel": "Anna Meier", "Sichtbar": True, "Größe": 80, "filename": None}]))
-    assert cli._read_rows(p) == [{"Titel": "Anna Meier", "Sichtbar": "ja", "Größe": "80", "filename": ""}]
+    assert cli._read_rows(p) == [{"Titel": "Anna Meier", "Sichtbar": "ja", "Größe": "80"}]  # null = omitted

@@ -60,7 +60,8 @@ Messages in the error text are German.
 
 ## Values
 
-- Text: as is; `\\n` for a line break.
+- Text: as is; `\\n` for a line break. An empty value (`--set "Untertitel="`, `""` in JSON rows)
+  renders no text; leave a control out (or `null`) to keep its default.
 - Checkbox: `ja`/`nein` (or true/false in JSON rows).
 - Colour: `#RRGGBB`. Point: `960 540`. Slider/angle: a number within `min`–`max`.
 - Duration (`-d` or the `duration` key): `8`, `8.5`, `00:00:08:12` or `200f`. Intro and outro
@@ -71,6 +72,10 @@ Messages in the error text are German.
 - `-f prores4444` (default, alpha), `prores4444xq`, `png-mov`, `h264` (no alpha, for previews).
 - Motion like in Premiere: `--offset 0,-300` (300 px higher), `--position X,Y`,
   `--motion-scale 90`, `--rotation`, `--opacity`.
+- `--align-text ink-left` (still, render, batch): lines of left-aligned text layers optically
+  flush left (visible left edges on the topmost text layer's edge), e.g. a bold title above a
+  regular subtitle. Default `none` matches After Effects exactly. Use it when the user asks for
+  flush text or when the still shows the lines' left edges a few pixels apart.
 - `--scale 0.5` renders at half resolution (quick previews only).
 - Missing fonts: `{cmd} fonts TEMPLATE --download` fetches free ones from Google Fonts.
   Commercial fonts must be installed by the user; until then a substitute is used, so tell them.

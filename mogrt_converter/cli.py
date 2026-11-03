@@ -116,6 +116,7 @@ def _apply_duration(args: argparse.Namespace, r) -> None:
 
         r.set_duration(parse_duration(args.duration, r.mogrt.frame_rate))
     r.set_motion(_motion(args, r.mogrt))
+    r.set_text_alignment(getattr(args, "align_text", None))
 
 
 def cmd_batch(args: argparse.Namespace) -> None:
@@ -129,7 +130,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
         return
     if not args.csv:
         raise SystemExit("CSV-Datei angeben (oder --template DATEI für eine leere Vorlage)")
-    table = build_rows(m, _read_rows(Path(args.csv)))
+    table = build_rows(m, _read_rows(Path(args.csv)), keep_empty=Path(args.csv).suffix.lower() == ".json")
     for e in table.errors:
         print("FEHLER:", e, file=sys.stderr)
     if table.unknown_columns:
@@ -149,7 +150,8 @@ def cmd_batch(args: argparse.Namespace) -> None:
 
     with _Warnings() as w:
         paths = render_rows(path, table.rows, out_dir, fmt=args.format, scale=args.scale,
-                            audio=not args.no_audio, progress=progress, motion=_motion(args, m))
+                            audio=not args.no_audio, progress=progress, motion=_motion(args, m),
+                            align_text=args.align_text)
     print(f"\nFertig in {time.time() - t0:.0f}s", file=sys.stderr)
     _emit(args, {"ok": True, "template": str(path), "outputs": [str(p) for p in paths],
                  "unknown_columns": table.unknown_columns, "warnings": w.unique()},
@@ -157,7 +159,9 @@ def cmd_batch(args: argparse.Namespace) -> None:
 
 
 def _read_rows(path: Path) -> list[dict[str, str]]:
-    """Rows from a CSV, or from JSON: a list of {column: value} objects (easier to write for scripts)."""
+    """Rows from a CSV, or from JSON: a list of {column: value} objects (easier to write for scripts).
+
+    In JSON, "" is an explicitly empty text and null counts as omitted (template default)."""
     from .batch import read_csv
 
     if path.suffix.lower() != ".json":
@@ -167,8 +171,8 @@ def _read_rows(path: Path) -> list[dict[str, str]]:
         data = data.get("rows", [])
     if not isinstance(data, list) or not all(isinstance(r, dict) for r in data):
         raise SystemExit("JSON-Datei muss eine Liste von Objekten {Spalte: Wert} enthalten")
-    cell = lambda v: "ja" if v is True else "nein" if v is False else "" if v is None else str(v)
-    return [{str(k): cell(v) for k, v in r.items()} for r in data]
+    cell = lambda v: "ja" if v is True else "nein" if v is False else str(v)
+    return [{str(k): cell(v) for k, v in r.items() if v is not None} for r in data]
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -342,6 +346,13 @@ def motion_args(p: argparse.ArgumentParser) -> None:
     g.add_argument("--opacity", type=float, metavar="PROZENT", help="Deckkraft in %%")
 
 
+def text_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--align-text", choices=["none", "ink-left"], default="none",
+                   help="ink-left: linksbündige Textebenen optisch an der sichtbaren linken Kante der obersten "
+                        "Textebene ausrichten (gleicht Vorbreiten der Buchstaben aus, z. B. fetter Titel über "
+                        "normalem Untertitel). Standard none = wie After Effects")
+
+
 def _utf8_console() -> None:
     """Make the console accept umlauts and CJK in template names.
 
@@ -374,6 +385,7 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("-d", "--duration", metavar="DAUER",
                        help="neue Dauer: Sekunden (8.5), Timecode (00:00:08:12) oder Frames (200f)")
         motion_args(p)
+        text_args(p)
 
     p = sub.add_parser("list", help="Vorlagen der App-Bibliothek (Ordner, Dateien, Sammlungen) auflisten")
     p.add_argument("--collection", metavar="NAME", help="nur Vorlagen dieser Sammlung")
@@ -417,6 +429,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-o", "--output", help="Zielordner")
     p.add_argument("--template", metavar="CSV", help="nur eine CSV-Vorlage mit allen Spalten schreiben")
     motion_args(p)
+    text_args(p)
     p.add_argument("-f", "--format", default="prores4444", choices=["prores4444", "prores4444xq", "png-mov", "h264"])
     p.add_argument("--scale", type=float, default=1.0)
     p.add_argument("--no-audio", action="store_true")

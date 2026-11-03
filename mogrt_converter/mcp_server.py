@@ -27,13 +27,16 @@ INSTRUCTIONS = """\
 Renders After Effects Motion Graphics Templates (.mogrt) – lower thirds, titles, call-outs,
 outros – as ProRes 4444 clips with alpha for DaVinci Resolve. Workflow: list_templates →
 template_info (control names) → preview_still to check that the texts fit (long names can
-overflow) → render or render_batch. Only change the controls the user asked for. Renders go to
-the app's render folder unless the user names another; Resolve imports new clips from there."""
+overflow) → render or render_batch. Only change the controls the user asked for; "" renders a
+text control empty. align_text "ink-left" makes the lines of text layers optically flush left.
+Renders go to the app's render folder unless the user names another; Resolve imports new clips
+from there."""
 
 _TEMPLATE = {"type": "string", "description": "Template name from list_templates (or a unique part of it) or a path to a .mogrt"}
 _VALUES = {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]},
-           "description": "Control values keyed by the control's `column` from template_info. Text: \\n for a line break; "
-                          "checkbox: true/false; colour: #RRGGBB; point: \"960 540\". Omitted controls keep their default."}
+           "description": "Control values keyed by the control's `column` from template_info. Text: \\n for a line break, "
+                          "\"\" for no text; checkbox: true/false; colour: #RRGGBB; point: \"960 540\". "
+                          "Omitted (or null) controls keep their default."}
 _DURATION = {"type": "string", "description": "New duration: seconds (8.5), timecode (00:00:08:12) or frames (200f). "
                                               "Intro and outro keep their timing."}
 _MOTION = {"type": "object", "description": "Optional motion like in Premiere",
@@ -42,6 +45,11 @@ _MOTION = {"type": "object", "description": "Optional motion like in Premiere",
                           "scale": {"type": "number", "description": "percent"},
                           "rotation": {"type": "number", "description": "degrees"},
                           "opacity": {"type": "number", "description": "percent"}}}
+_ALIGN_TEXT = {"type": "string", "enum": ["none", "ink-left"],
+               "description": "Optical text alignment (default none = exactly like After Effects, which aligns glyph "
+                              "origins). \"ink-left\": move every line of the left-aligned text layers so its visible "
+                              "left edge sits on the topmost text layer's edge, e.g. a bold title flush with a regular "
+                              "subtitle whose first letters have different side bearings. Same offset on every frame."}
 
 TOOLS = [
     {"name": "list_templates",
@@ -60,19 +68,20 @@ TOOLS = [
                     "before rendering video. Default time: the end of the intro (graphic fully visible).",
      "inputSchema": {"type": "object", "properties": {
          "template": _TEMPLATE, "values": _VALUES, "duration": _DURATION, "motion": _MOTION,
-         "time": {"type": "number", "description": "seconds"}}, "required": ["template"]},
+         "align_text": _ALIGN_TEXT, "time": {"type": "number", "description": "seconds"}}, "required": ["template"]},
      "annotations": {"readOnlyHint": True}},
     {"name": "render",
      "description": "Render one clip (default ProRes 4444 with alpha) and return its path.",
      "inputSchema": {"type": "object", "properties": {
          "template": _TEMPLATE, "values": _VALUES, "duration": _DURATION, "motion": _MOTION,
+         "align_text": _ALIGN_TEXT,
          "filename": {"type": "string", "description": "file name without extension (default: template name + first text)"},
          "output_dir": {"type": "string", "description": "default: the app's render folder"},
          "format": {"type": "string", "enum": FORMATS}}, "required": ["template"]}},
     {"name": "render_batch",
      "description": "Render one clip per row, e.g. a lower third for each person. Returns the paths.",
      "inputSchema": {"type": "object", "properties": {
-         "template": _TEMPLATE, "motion": _MOTION,
+         "template": _TEMPLATE, "motion": _MOTION, "align_text": _ALIGN_TEXT,
          "rows": {"type": "array", "items": {"type": "object", "properties": {
              "values": _VALUES, "duration": _DURATION,
              "filename": {"type": "string", "description": "file name without extension"}}}},
@@ -90,28 +99,24 @@ def _cell(v: Any) -> str:
 
 
 def _rows(m, rows: list[dict]):
-    """Rows via the batch table logic, so values are parsed exactly like CSV cells."""
+    """Rows via the batch table logic, so values are parsed exactly like CSV cells.
+
+    "" is an explicitly empty text; omitted or null values keep the template default."""
     from .batch import build_rows
 
     records = []
     for r in rows:
-        rec = {str(k): _cell(v) for k, v in (r.get("values") or {}).items()}
+        rec = {str(k): _cell(v) for k, v in (r.get("values") or {}).items() if v is not None}
         for key in ("filename", "duration"):
             if r.get(key) not in (None, ""):
                 rec[key] = _cell(r[key])
         records.append(rec)
-    table = build_rows(m, records)
+    table = build_rows(m, records, keep_empty=True)  # one output per row, even without values
     if table.unknown_columns:
         raise ToolError("Unknown controls: " + ", ".join(table.unknown_columns)
                         + ". Available: " + ", ".join(h for h, _ in _columns(m)))
     if table.errors:
         raise ToolError("; ".join(table.errors))
-    if len(table.rows) != len(rows):
-        # build_rows skips rows without any value; keep them as default renders
-        from .batch import Row
-
-        table.rows = [next((t for t in table.rows if t.index == i), Row(index=i, label=f"Zeile {i}"))
-                      for i in range(1, len(rows) + 1)]
     return table.rows
 
 
@@ -128,6 +133,13 @@ def _motion(m, motion: dict | None) -> dict:
     ns = argparse.Namespace(position=mo.get("position"), offset=mo.get("offset"), motion_scale=mo.get("scale"),
                             rotation=mo.get("rotation"), opacity=mo.get("opacity"))
     return cli_motion(ns, m)
+
+
+def _align_text(args: dict) -> str | None:
+    mode = args.get("align_text") or "none"
+    if mode not in ("none", "ink-left"):
+        raise ToolError("align_text must be \"none\" or \"ink-left\"")
+    return mode
 
 
 def _load(ref: str):
@@ -272,6 +284,7 @@ class Server:
         if row.duration:
             r.set_duration(parse_duration(row.duration, m.frame_rate))
         r.set_motion(_motion(m, args.get("motion")))
+        r.set_text_alignment(_align_text(args))
         t = args.get("time")
         if t is None:
             regs = m.protected_regions  # the intro keeps its timing, so its end is the same in the output
@@ -302,6 +315,7 @@ class Server:
         fmt = args.get("format") or "prores4444"
         if fmt not in FORMATS:
             raise ToolError(f"format must be one of {FORMATS}")
+        align = _align_text(args)
         table = _rows(m, rows)
         out_dir = Path(args.get("output_dir") or library.load_config()["output_dir"]).expanduser()
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -311,7 +325,8 @@ class Server:
                 progress(k * n + i, len(table) * n, f"clip {k + 1}/{len(table)}, frame {i}/{n}")
 
         with self.render_lock:
-            paths = render_rows(m.path, table, out_dir, fmt=fmt, progress=cb, motion=_motion(m, args.get("motion")))
+            paths = render_rows(m.path, table, out_dir, fmt=fmt, progress=cb, motion=_motion(m, args.get("motion")),
+                                align_text=align)
         return self._json({"outputs": [str(p) for p in paths], "output_dir": str(out_dir)})
 
 

@@ -78,11 +78,15 @@ mogrt still vorlage.mogrt -t 2.5 -o vorschau.png          # Einzelbild
 mogrt render vorlage.mogrt --set "Titel=Erika Musterfrau" --set "Untertitel=Leitung Kommunikation" -o bauchbinde
 mogrt render vorlage.mogrt -d 8 -o bauchbinde_8s                    # neue Dauer (Ein-/Ausblendung bleiben)
 mogrt render vorlage.mogrt --offset 0,-300 -o bauchbinde_hoch       # 300 px höher (auch --position, --motion-scale, --rotation, --opacity)
+mogrt render vorlage.mogrt --set "Untertitel=" -o nur_titel           # leerer Wert = kein Text (nicht gesetzte Regler behalten den Standard)
+mogrt render vorlage.mogrt --align-text ink-left -o call_out          # Textzeilen optisch linksbündig (siehe unten)
 mogrt batch vorlage.mogrt --template namen.csv                       # CSV-Vorlage mit allen Spalten
 mogrt batch vorlage.mogrt namen.csv -o renders/                       # eine Datei pro Zeile
 ```
 
-**CSV-Format:** Spaltenüberschriften sind die Reglernamen der Vorlage (siehe `mogrt info`), dazu optional `Dateiname` und `Dauer`. Trennzeichen Semikolon, Komma oder Tab, UTF-8 oder Windows-Kodierung. Leere Zellen nutzen den Standardwert. Farben als `#RRGGBB`, Positionen als `960 540`, Checkboxen als `ja`/`nein`. Mehrzeiliger Text wie in Excel (Alt+Enter) oder mit `\n`.
+**CSV-Format:** Spaltenüberschriften sind die Reglernamen der Vorlage (siehe `mogrt info`), dazu optional `Dateiname` und `Dauer`. Trennzeichen Semikolon, Komma oder Tab, UTF-8 oder Windows-Kodierung. Eine leere Textzelle ergibt keinen Text, andere leere Zellen und fehlende Spalten nutzen den Standardwert. Farben als `#RRGGBB`, Positionen als `960 540`, Checkboxen als `ja`/`nein`. Mehrzeiliger Text wie in Excel (Alt+Enter) oder mit `\n`.
+
+**Optisch linksbündig** (`--align-text ink-left`, auch bei `still` und `batch`): After Effects richtet Textebenen an den Glyphen-Ursprüngen aus, ein fetter Titel über einem normalen Untertitel ist deshalb nur mit dem Beispieltext der Vorlage bündig. Beginnen die Zeilen mit Buchstaben mit anderer Vorbreite (W, T, A …), stehen die sichtbaren Kanten ein paar Pixel auseinander – genau so rendert es auch After Effects. `ink-left` verschiebt jede Zeile der linksbündigen Textebenen der Grafik so, dass ihre sichtbare linke Kante auf der Kante der obersten Textebene liegt. Der Versatz wird einmal gemessen und bleibt in jedem Frame gleich (er skaliert mit der Ebene). Zeilen, die mehr als 0,3 Geviert von dieser Kante entfernt sind (Einzüge, zweite Spalten), bleiben, wo sie sind. Standard `none` rendert genau wie After Effects.
 
 In der Mac-App heißt der Befehl `"/Applications/MOGRT Converter.app/Contents/MacOS/MOGRT Converter"`, unter Windows `mogrt.exe` im App-Ordner.
 Formate (`-f`): `prores4444` (Standard), `prores4444xq`, `png-mov`, `h264`.
@@ -101,7 +105,7 @@ mogrt skill --install                                 # Anleitung als Skill für
 
 Nach `mogrt skill --install` genügt in Claude Code ein Satz wie „Mach mir Bauchbinden für Anna Meier (Leiterin Kommunikation) und Jonas Keller (Projektleiter Netze), 6 Sekunden“. Claude sucht die Vorlage, prüft ein Standbild auf zu lange Texte und rendert in den Render-Ordner der App, von wo das Resolve-Script die Clips importiert. `mogrt skill` ohne Option gibt die Anleitung aus, z. B. für die `AGENTS.md` anderer Agenten.
 
-**MCP-Server** für Claude Desktop und andere MCP-Clients (auch ohne Terminal): `mogrt mcp` stellt die Werkzeuge `list_templates`, `template_info`, `preview_still` (gibt das Bild zurück, das Modell sieht also, ob ein Name zu lang ist), `render` und `render_batch` bereit. `mogrt mcp --config` gibt den Eintrag für `claude_desktop_config.json` (Claude Desktop: Einstellungen → Entwickler → Konfiguration bearbeiten) und den Befehl für Claude Code aus.
+**MCP-Server** für Claude Desktop und andere MCP-Clients (auch ohne Terminal): `mogrt mcp` stellt die Werkzeuge `list_templates`, `template_info`, `preview_still` (gibt das Bild zurück, das Modell sieht also, ob ein Name zu lang ist), `render` und `render_batch` bereit. In `values` bedeutet `""` kein Text, weggelassene oder `null`-Regler behalten ihren Standardwert. `preview_still`, `render` und `render_batch` nehmen `"align_text": "ink-left"` für die oben beschriebene optisch linksbündige Ausrichtung. `mogrt mcp --config` gibt den Eintrag für `claude_desktop_config.json` (Claude Desktop: Einstellungen → Entwickler → Konfiguration bearbeiten) und den Befehl für Claude Code aus.
 
 ## Was unterstützt wird
 

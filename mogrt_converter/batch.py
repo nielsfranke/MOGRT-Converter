@@ -3,7 +3,8 @@
 Columns are the template's control names. Optional extra columns:
   Dateiname (filename)  – output file name (without extension)
   Dauer (duration)      – new duration (seconds, timecode or frames)
-Empty cells keep the template default.
+An empty text cell renders no text; other empty cells and missing columns keep the template
+default.
 """
 
 from __future__ import annotations
@@ -110,15 +111,22 @@ def read_csv(data: bytes | str) -> list[dict[str, str]]:
         dialect = csv.excel
         dialect.delimiter = ";" if sample.count(";") >= sample.count(",") else ","
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
-    return [{(k or "").strip(): (v if v is not None else "") for k, v in r.items()} for r in reader]
+    # cells missing at the end of a short line count as omitted (template default)
+    return [{(k or "").strip(): v for k, v in r.items() if v is not None} for r in reader]
 
 
-def build_rows(m: Mogrt, records: list[dict[str, str]]) -> Table:
+def build_rows(m: Mogrt, records: list[dict[str, str]], keep_empty: bool = False) -> Table:
+    """Rows from {column: cell} records. An empty text cell ("") is an explicitly empty text;
+    only a missing column (or an empty non-text cell) keeps the template default.
+
+    keep_empty: also keep records without any value (JSON rows from scripts and the MCP server:
+    one output per record). CSV lines without any value are skipped as blank lines.
+    """
     cols = columns(m)
     by_header = {h.strip().lower(): c for h, c in cols}
     rows, errors, unknown = [], [], set()
     for i, rec in enumerate(records, 1):
-        if not any((v or "").strip() for v in rec.values()):
+        if not keep_empty and not any((v or "").strip() for v in rec.values()):
             continue  # empty line
         row = Row(index=i)
         for header, raw in rec.items():
@@ -135,15 +143,15 @@ def build_rows(m: Mogrt, records: list[dict[str, str]]) -> Table:
             if c is None:
                 unknown.add(header)
                 continue
-            if raw is None or (raw.strip() == "" and c.type != "text") or raw == "":
+            if raw is None or (c.type != "text" and raw.strip() == ""):
                 continue  # keep default
             try:
                 row.values[c.id] = parse_value(c, raw)
             except ValueError:
                 errors.append(f"Zeile {i}, Spalte „{header}“: ungültiger Wert {raw!r}")
-        texts = [str(v).split("\n")[0] for cid, v in row.values.items()
+        texts = [str(v).strip().split("\n")[0] for cid, v in row.values.items()
                  if any(c.id == cid and c.type == "text" for _, c in cols)]
-        row.label = texts[0] if texts else f"Zeile {i}"
+        row.label = next((x for x in texts if x), f"Zeile {i}")
         rows.append(row)
     return Table(rows, sorted(unknown), errors)
 
@@ -181,8 +189,10 @@ def output_names(m: Mogrt, rows: list[Row]) -> list[str]:
 
 
 def render_rows(m_path: str | Path, rows: list[Row], out_dir: Path, fmt: str = "prores4444",
-                scale: float = 1.0, audio: bool = True, progress=None, motion: dict | None = None) -> list[Path]:
-    """Render every row (sequentially). progress(row_index, frame, frames)."""
+                scale: float = 1.0, audio: bool = True, progress=None, motion: dict | None = None,
+                align_text: str | None = None) -> list[Path]:
+    """Render every row (sequentially). progress(row_index, frame, frames).
+    align_text: optical text alignment, see Renderer.set_text_alignment()."""
     from .mogrt import load
     from .output import collect_audio, render_video
     from .render.compositor import Renderer
@@ -196,6 +206,7 @@ def render_rows(m_path: str | Path, rows: list[Row], out_dir: Path, fmt: str = "
         if row.duration:
             r.set_duration(parse_duration(row.duration, m.frame_rate))
         r.set_motion(motion)
+        r.set_text_alignment(align_text)
         cb = (lambda i, n, k=k: progress(k, i, n)) if progress else None
         results.append(render_video(r, out_dir / name, fmt=fmt, audio=collect_audio(r) if audio else [], progress=cb))
     return results

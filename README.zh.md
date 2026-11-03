@@ -80,11 +80,15 @@ mogrt still template.mogrt -t 2.5 -o preview.png           # single frame
 mogrt render template.mogrt --set "Title=Jane Doe" --set "Subtitle=Head of Communications" -o lower_third
 mogrt render template.mogrt -d 8 -o lower_third_8s                   # new duration (intro/outro kept)
 mogrt render template.mogrt --offset 0,-300 -o lower_third_up        # 300 px higher (also --position, --motion-scale, --rotation, --opacity)
+mogrt render template.mogrt --set "Subtitle=" -o title_only           # empty value = no text
+mogrt render template.mogrt --align-text ink-left -o call_out         # text lines optically flush left
 mogrt batch template.mogrt --template names.csv                       # CSV template with all columns
 mogrt batch template.mogrt names.csv -o renders/                      # one file per row
 ```
 
-**CSV 格式**：列标题为模板的控件名称（参见 `mogrt info`），另可选用 `filename` 和 `duration`。分隔符可用分号、逗号或制表符，编码为 UTF-8 或 Windows 编码。空单元格使用默认值。颜色写作 `#RRGGBB`，位置写作 `960 540`，复选框写作 `yes`/`no`。多行文字如同 Excel 中那样（Alt+Enter）或用 `\n`。
+**CSV 格式**：列标题为模板的控件名称（参见 `mogrt info`），另可选用 `filename` 和 `duration`。分隔符可用分号、逗号或制表符，编码为 UTF-8 或 Windows 编码。空的文字单元格表示不显示文字；其他空单元格和缺失的列使用默认值。颜色写作 `#RRGGBB`，位置写作 `960 540`，复选框写作 `yes`/`no`。多行文字如同 Excel 中那样（Alt+Enter）或用 `\n`。
+
+**光学左对齐**（`--align-text ink-left`，也适用于 `still` 和 `batch`）：After Effects 按字形原点对齐文字图层，因此粗体标题与常规副标题只有在模板示例文字下才左侧齐平。若各行以左侧留白（side bearing）不同的字母开头（W、T、A …），可见的左边缘会相差几个像素——After Effects 的渲染结果也是如此。`ink-left` 会移动图形中各个左对齐文字图层的每一行，使其可见左边缘与最上方文字图层的边缘对齐。偏移量只测量一次，在每一帧保持不变（随图层缩放）。距离该边缘超过 0.3 em 的行（缩进、第二栏）保持不动。默认值 `none` 的渲染结果与 After Effects 完全一致。
 
 在 Mac 应用中，命令为 `"/Applications/MOGRT Converter.app/Contents/MacOS/MOGRT Converter"`；在 Windows 中为应用目录下的 `mogrt.exe`。
 格式（`-f`）：`prores4444`（默认）、`prores4444xq`、`png-mov`、`h264`。
@@ -103,7 +107,7 @@ mogrt skill --install                                 # 将说明安装为 Claud
 
 执行 `mogrt skill --install` 后，在 Claude Code 中一句话即可，例如“为 Jane Doe（传播主管）制作 6 秒的下三分之一字幕”。Claude 会查找模板、用静帧检查文字是否过长，并渲染到应用的渲染文件夹，Resolve 脚本会从那里导入片段。不带参数的 `mogrt skill` 会输出这份说明，可用于其他智能体的 `AGENTS.md`。
 
-**MCP 服务器**，供 Claude Desktop 及其他 MCP 客户端使用（无需终端）：`mogrt mcp` 提供 `list_templates`、`template_info`、`preview_still`（返回图像，模型能看出名字是否过长）、`render` 和 `render_batch` 等工具。`mogrt mcp --config` 会输出 `claude_desktop_config.json` 的配置项（Claude Desktop：设置 → 开发者 → 编辑配置）以及 Claude Code 的命令。
+**MCP 服务器**，供 Claude Desktop 及其他 MCP 客户端使用（无需终端）：`mogrt mcp` 提供 `list_templates`、`template_info`、`preview_still`（返回图像，模型能看出名字是否过长）、`render` 和 `render_batch` 等工具。在 `values` 中，`""` 表示不显示文字，省略或为 `null` 的控件保留默认值。`preview_still`、`render` 和 `render_batch` 接受 `"align_text": "ink-left"`，用于上述光学左对齐。`mogrt mcp --config` 会输出 `claude_desktop_config.json` 的配置项（Claude Desktop：设置 → 开发者 → 编辑配置）以及 Claude Code 的命令。
 
 ## 支持范围
 

@@ -63,6 +63,43 @@ class TextLayout:
     style: Any = None
 
 
+@lru_cache(maxsize=8192)
+def glyph_ink(fd: FontData, gid: int) -> tuple[float, float, float, float] | None:
+    """Exact outline bounds (left, top, right, bottom) of a glyph in em, None without ink.
+
+    AE's sourceRectAtTime uses the outline bounds. skia.Font.getBounds() is not usable for this:
+    it returns the glyph cache's integer mask bounds (floored and padded, up to ~1.7 px off at
+    50 px), which visibly moved anchors computed from sourceRectAtTime().left.
+    """
+    path = skia.Font(fd.typeface, fd.upem).getPath(gid)
+    if path is None or path.isEmpty():
+        return None
+    b = path.computeTightBounds()
+    u = float(fd.upem)
+    return b.left() / u, b.top() / u, b.right() / u, b.bottom() / u
+
+
+def line_ink_lefts(lay: TextLayout) -> list[tuple[float, float] | None]:
+    """Per line: (left ink edge x, baseline y) in layer space, without animators; None if no ink."""
+    out: list[tuple[float, float] | None] = []
+    for start, end in lay.lines:
+        best = None
+        for g in lay.glyphs[start:end]:
+            ink = glyph_ink(g.font, g.gid) if g.char.strip() else None
+            if ink is not None and (best is None or g.x + ink[0] * g.size < best[0]):
+                best = (g.x + ink[0] * g.size, g.y)
+        out.append(best)
+    return out
+
+
+LEFT_JUSTIFICATIONS = ("LEFT_JUSTIFY", "FULL_JUSTIFY_LASTLINE_LEFT", "FULL_JUSTIFY_LASTLINE_FULL")
+
+
+def is_left_justified(doc: Any) -> bool:
+    just = getattr(doc, "justification", None)
+    return getattr(just, "name", str(just)) in LEFT_JUSTIFICATIONS
+
+
 # Optical kerning (Character panel "Optical"): AE spaces each pair from the glyph shapes and
 # ignores the font's kerning table. Model fitted to AE 2025 measurements (11 fonts, ~2000-3800
 # pairs each, tools/ae_compare.py-style ExtendScript probes): per scanline where both glyphs have
@@ -493,6 +530,9 @@ class TextRenderer:
         self.ev = ev
         self._skfonts: dict[tuple[str, float], skia.Font] = {}
         self._layouts: dict[tuple[int, float], tuple[TextLayout, list[CharState]]] = {}
+        # optical alignment (Renderer.set_text_alignment): per layer id, x offset per line in
+        # layer units. Only drawing uses it; sourceRectAtTime (bounds()) stays as in AE.
+        self.line_shift: dict[int, list[float]] = {}
 
     def clear_cache(self) -> None:
         """Layouts depend on values and time; cleared with the evaluator's cache."""
@@ -527,6 +567,11 @@ class TextRenderer:
                 extra[g.index] = s.tracking
             lay = layout_text(tv, extra)
             states = animate(self.ev, layer, lay, t)
+        shift = self.line_shift.get(id(layer))
+        if shift:
+            for g in lay.glyphs:
+                if g.line < len(shift):
+                    g.x += shift[g.line]
         return lay, states
 
     def bounds(self, layer: Any, t: float) -> skia.Rect:
@@ -535,11 +580,11 @@ class TextRenderer:
         lay = layout_text(tv)
         acc = skia.Rect.MakeEmpty()
         for g in lay.glyphs:
-            if not g.char.strip():
+            ink = glyph_ink(g.font, g.gid) if g.char.strip() else None
+            if ink is None:
                 continue
-            f = self._skfont(g.font, g.size)
-            b = f.getBounds([g.gid])[0]
-            acc.join(skia.Rect.MakeLTRB(g.x + b.left(), g.y + b.top(), g.x + b.right(), g.y + b.bottom()))
+            s = g.size
+            acc.join(skia.Rect.MakeLTRB(g.x + ink[0] * s, g.y + ink[1] * s, g.x + ink[2] * s, g.y + ink[3] * s))
         doc = tv.doc
         if getattr(doc, "apply_stroke", False) and doc.stroke_width:
             pad = doc.stroke_width / 2

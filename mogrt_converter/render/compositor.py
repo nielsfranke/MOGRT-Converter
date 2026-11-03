@@ -154,6 +154,11 @@ def _look_at(eye: np.ndarray, target: np.ndarray) -> np.ndarray:
 
 # --------------------------------------------------------------------------- renderer
 
+TEXT_ALIGN_MODES = ("none", "ink-left")
+# ink-left only pulls lines whose ink edge is this close (in em of the larger font) to the
+# reference edge: side bearings are well below it, deliberate indents usually above
+ALIGN_TOLERANCE_EM = 0.3
+
 
 class Renderer:
     def __init__(self, mogrt: Mogrt, values: dict[str, Any] | None = None, scale: float = 1.0):
@@ -171,6 +176,8 @@ class Renderer:
         self._comp_cache: dict[tuple, skia.Image] = {}  # per frame, see render_comp()
         self.time_map = None  # set_duration()
         self.motion: dict[str, Any] | None = None  # set_motion()
+        self.text_align: str | None = None  # set_text_alignment()
+        self._align_ready = False
 
     def warn(self, msg: str) -> None:
         if msg not in self._warned:
@@ -180,6 +187,73 @@ class Renderer:
     def set_values(self, values: dict[str, Any]) -> None:
         self.ev.apply_controls(values)
         self.text.clear_cache()
+        self._align_ready = False  # the texts changed: measure the ink edges again
+
+    def set_text_alignment(self, mode: str | None) -> None:
+        """Optical alignment of text layers (not an After Effects feature, off by default).
+
+        "ink-left": After Effects aligns glyph origins, so lines starting with different letters
+        or fonts (Bold title, Regular subtitle) have their visible left edges a few pixels apart
+        (side bearings). This shifts every line of the left-justified text layers in a comp so
+        its left ink edge lands on the first such layer's first line (topmost in the timeline).
+        The offset is measured once, at the middle of the time all those layers are visible, and
+        applied in layer space: the same on every frame and scaled with the layer. Lines further
+        than ALIGN_TOLERANCE_EM from that edge (indents, other columns) are left alone.
+        """
+        mode = (mode or "none").strip().lower()
+        if mode not in TEXT_ALIGN_MODES:
+            raise ValueError(f"align_text muss eines von {list(TEXT_ALIGN_MODES)} sein, nicht {mode!r}")
+        self.text_align = None if mode == "none" else mode
+        self._align_ready = False
+        self.text.line_shift = {}
+        self.text.clear_cache()
+
+    def _ensure_text_alignment(self) -> None:
+        if self.text_align is None or self._align_ready:
+            return
+        self.text.line_shift = {}
+        self.ev.clear_cache()
+        self.text.clear_cache()
+        self.text.line_shift = self.ink_left_shifts()
+        self._align_ready = True
+        self.ev.clear_cache()
+        self.text.clear_cache()
+
+    def ink_left_shifts(self) -> dict[int, list[float]]:
+        """Per text layer id: x offset per line (layer units) that puts its left ink edge on the
+        reference edge of its comp. See set_text_alignment()."""
+        from .text import is_left_justified, layout_text, line_ink_lefts
+
+        shifts: dict[int, list[float]] = {}
+        for comp in self.mogrt.project.compositions:
+            layers = [l for l in comp.layers if type(l).__name__ == "TextLayer" and getattr(l, "enabled", True)
+                      and not getattr(l, "guide_layer", False) and not getattr(l, "three_d_layer", False)]
+            if not layers:
+                continue
+            lo, hi = max(float(l.in_point) for l in layers), min(float(l.out_point) for l in layers)
+            t = (lo + hi) / 2 if hi > lo else float(comp.duration) / 2
+            lines = []  # (layer, line index, line count, comp x of the ink edge, x scale, em in comp px)
+            for layer in layers:
+                tv = self._val(layer, t, "ADBE Text Properties", "ADBE Text Document")
+                if tv is None or not hasattr(tv, "doc") or not is_left_justified(tv.doc):
+                    continue
+                w = self.world_matrix(layer, t)
+                sx = float(w[0, 0])
+                if sx <= 1e-6 or abs(w[0, 1]) > 0.01 * sx or abs(w[1, 0]) > 0.01 * sx:
+                    continue  # rotated or mirrored: a horizontal shift in layer space would not do
+                lay = layout_text(tv)
+                em = float(tv.doc.font_size) * sx
+                for li, edge in enumerate(line_ink_lefts(lay)):
+                    if edge is not None:
+                        x = sx * edge[0] + float(w[0, 1]) * edge[1] + float(w[0, 3])
+                        lines.append((layer, li, len(lay.lines), x, sx, em))
+            if not lines:
+                continue
+            ref_x, ref_em = lines[0][3], lines[0][5]
+            for layer, li, n, x, sx, em in lines:
+                if abs(x - ref_x) <= ALIGN_TOLERANCE_EM * max(em, ref_em):
+                    shifts.setdefault(id(layer), [0.0] * n)[li] = (ref_x - x) / sx
+        return shifts
 
     @property
     def duration(self) -> float:
@@ -225,6 +299,7 @@ class Renderer:
     # ------------------------------------------------------------------ public
     def render_frame(self, t: float) -> skia.Image:
         """Render the frame at output time t (seconds)."""
+        self._ensure_text_alignment()
         self.ev.clear_cache()
         self.text.clear_cache()
         self._comp_cache = {}
