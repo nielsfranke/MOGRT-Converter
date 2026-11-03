@@ -65,7 +65,7 @@ TOOLS = [
      "annotations": {"readOnlyHint": True}},
     {"name": "preview_still",
      "description": "Render one frame with the given values and return it as an image. Use it to check that texts fit "
-                    "before rendering video. Default time: the end of the intro (graphic fully visible).",
+                    "before rendering video. Default time: the end of the intro (graphic fully visible), or the middle when the template has no real intro region.",
      "inputSchema": {"type": "object", "properties": {
          "template": _TEMPLATE, "values": _VALUES, "duration": _DURATION, "motion": _MOTION,
          "align_text": _ALIGN_TEXT, "time": {"type": "number", "description": "seconds"}}, "required": ["template"]},
@@ -288,7 +288,10 @@ class Server:
         t = args.get("time")
         if t is None:
             regs = m.protected_regions  # the intro keeps its timing, so its end is the same in the output
-            t = regs[0][1] if regs and regs[0][0] < 0.05 else r.duration / 2
+            # A zero-length region is only a marker (e.g. IWB call-out: 0.00-0.00 s), not an intro; its end
+            # would be the empty first frame.
+            intro = regs and regs[0][0] < 0.05 and regs[0][1] - regs[0][0] >= 0.2
+            t = regs[0][1] if intro else r.duration / 2
         t = max(0.0, min(float(t), r.duration - 1 / m.frame_rate))
         with self.render_lock:
             img = r.render_frame(t)

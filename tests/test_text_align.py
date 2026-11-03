@@ -241,3 +241,15 @@ def test_iwb_ink_left_within_one_pixel(iwb, size):
         assert len(bands) == 2 + su.count("\n")
         for _, x in bands[1:]:
             assert abs(x - bands[0][1]) <= 1.0, (ti, su, bands)
+
+
+def test_iwb_preview_defaults_past_a_zero_length_marker_region(iwb):
+    """The call-out's first protected region is 0.00-0.00 s; its end would be the empty first frame."""
+    from mogrt_converter.mcp_server import Server
+
+    out = io.StringIO()
+    Server(out)._call(1, {"name": "preview_still", "arguments": {
+        "template": str(IWB_CALLOUT), "values": {"Titel": "ALLES DAZU IM SAP"}}})
+    res = json.loads(out.getvalue().splitlines()[-1])["result"]
+    assert not res.get("isError"), res
+    assert res["content"][1]["text"].startswith("Frame at 2.60 s")
